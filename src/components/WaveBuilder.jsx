@@ -276,15 +276,23 @@ function WaveCard({ wave, categories, stationTemplates, onUpdate, onDelete, onMo
 }
 
 // ── Wave Builder ──────────────────────────────────────────────────────────────
+function getWaveEndTime(wave) {
+  if (!wave?.startTime) return '09:00';
+  if (wave.isRest) return addMinutesToTime(wave.startTime, wave.durationMinutes || 30);
+  const slotCount = (wave.slots || []).length;
+  return addMinutesToTime(wave.startTime, slotCount * (wave.intervalMinutes || 10));
+}
+
 export default function WaveBuilder({ waves, categories, stationTemplates, onWavesChange }) {
   function addWave() {
     const defaultCat = categories[0]?.id || '';
     const defaultTemplate = stationTemplates[0]?.id || '';
+    const startTime = waves.length > 0 ? getWaveEndTime(waves[waves.length - 1]) : '09:00';
     const newWave = {
       id: `wave_${Date.now()}`,
       isRest: false,
       categoryId: defaultCat,
-      startTime: '09:00',
+      startTime,
       intervalMinutes: 10,
       teamsPerSlot: 2,
       stationTemplateId: defaultTemplate,
@@ -295,8 +303,7 @@ export default function WaveBuilder({ waves, categories, stationTemplates, onWav
   }
 
   function addRest() {
-    const lastWave = waves[waves.length - 1];
-    const startTime = lastWave?.startTime || '10:00';
+    const startTime = waves.length > 0 ? getWaveEndTime(waves[waves.length - 1]) : '10:00';
     onWavesChange([...waves, {
       id: `rest_${Date.now()}`,
       isRest: true,

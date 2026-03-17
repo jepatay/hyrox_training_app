@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   doc, getDoc, updateDoc, collection, getDocs,
@@ -20,6 +20,55 @@ function formatDateWithDay(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DAYS = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+function CalendarPicker({ value, onChange }) {
+  const today = new Date();
+  const [view, setView] = useState(() => {
+    if (value) { const [y, m] = value.split('-').map(Number); return new Date(y, m - 1, 1); }
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0
+  const selY = value ? +value.split('-')[0] : null;
+  const selM = value ? +value.split('-')[1] - 1 : null;
+  const selD = value ? +value.split('-')[2] : null;
+
+  function pick(d) {
+    onChange(`${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  }
+
+  const cells = [...Array(startOffset).fill(null), ...Array.from({length: daysInMonth}, (_,i) => i+1)];
+
+  return (
+    <div className="cal-popup">
+      <div className="cal-nav">
+        <button type="button" onClick={() => setView(new Date(year, month-1, 1))}>‹</button>
+        <span className="cal-title">{CAL_MONTHS[month]} {year}</span>
+        <button type="button" onClick={() => setView(new Date(year, month+1, 1))}>›</button>
+      </div>
+      <div className="cal-grid">
+        {CAL_DAYS.map(d => <div key={d} className="cal-dow">{d}</div>)}
+        {cells.map((d, i) => (
+          <div
+            key={i}
+            className={[
+              'cal-cell',
+              d ? 'cal-cell-active' : '',
+              d && selY===year && selM===month && selD===d ? 'cal-cell-sel' : '',
+              d && today.getFullYear()===year && today.getMonth()===month && today.getDate()===d ? 'cal-cell-today' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={() => d && pick(d)}
+          >{d||''}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EventEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -33,6 +82,15 @@ export default function EventEditor() {
   const [savedWaves, setSavedWaves] = useState(false);
   const [showTeamForm, setShowTeamForm] = useState(null);
   const [editingTeam, setEditingTeam] = useState(null);
+  const [showCal, setShowCal] = useState(false);
+  const calRef = useRef(null);
+
+  useEffect(() => {
+    if (!showCal) return;
+    function onDown(e) { if (calRef.current && !calRef.current.contains(e.target)) setShowCal(false); }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showCal]);
 
   useEffect(() => {
     load();
@@ -212,16 +270,22 @@ export default function EventEditor() {
               </div>
               <div className="form-group">
                 <label>Date</label>
-                <input
-                  type="date"
-                  value={event?.date || ''}
-                  onChange={(e) => setEvent((prev) => ({ ...prev, date: e.target.value }))}
-                />
-                {event?.date && (
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '5px', display: 'block', fontFamily: 'DM Mono, monospace' }}>
-                    {formatDateWithDay(event.date)}
-                  </span>
-                )}
+                <div ref={calRef} style={{ position: 'relative', display: 'inline-block' }}>
+                  <button
+                    type="button"
+                    className="date-trigger"
+                    onClick={() => setShowCal(v => !v)}
+                  >
+                    {event?.date ? formatDateWithDay(event.date) : 'Pick a date…'}
+                    <span style={{ marginLeft: 8, opacity: 0.5 }}>▾</span>
+                  </button>
+                  {showCal && (
+                    <CalendarPicker
+                      value={event?.date || ''}
+                      onChange={(d) => { setEvent(prev => ({ ...prev, date: d })); setShowCal(false); }}
+                    />
+                  )}
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button className="btn-primary" onClick={saveInfo} disabled={saving} style={{ alignSelf: 'flex-start' }}>
@@ -415,6 +479,92 @@ export default function EventEditor() {
         }
         .mono {
           font-family: 'DM Mono', monospace;
+        }
+        .date-trigger {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text);
+          font-family: 'DM Mono', monospace;
+          font-size: 0.88rem;
+          padding: 8px 14px;
+          cursor: pointer;
+          text-align: left;
+          min-width: 240px;
+          transition: border-color var(--transition);
+        }
+        .date-trigger:hover { border-color: var(--yellow); }
+        .cal-popup {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          z-index: 200;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 12px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+          min-width: 240px;
+        }
+        .cal-nav {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+        }
+        .cal-nav button {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          font-size: 1.2rem;
+          cursor: pointer;
+          padding: 2px 8px;
+          border-radius: var(--radius);
+          line-height: 1;
+        }
+        .cal-nav button:hover { background: var(--bg-elevated); color: var(--text); }
+        .cal-title {
+          font-family: 'Barlow Condensed', sans-serif;
+          font-weight: 700;
+          font-size: 0.95rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text);
+        }
+        .cal-grid {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 2px;
+        }
+        .cal-dow {
+          text-align: center;
+          font-size: 0.68rem;
+          font-family: 'Barlow Condensed', sans-serif;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: var(--text-dim);
+          padding: 4px 0 6px;
+          letter-spacing: 0.04em;
+        }
+        .cal-cell {
+          text-align: center;
+          padding: 6px 2px;
+          border-radius: var(--radius);
+          font-size: 0.82rem;
+          font-family: 'DM Mono', monospace;
+          color: transparent;
+          cursor: default;
+        }
+        .cal-cell-active {
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+        .cal-cell-active:hover { background: var(--bg-elevated); color: var(--text); }
+        .cal-cell-today { color: var(--yellow) !important; font-weight: 700; }
+        .cal-cell-sel {
+          background: var(--yellow) !important;
+          color: #000 !important;
+          font-weight: 700;
         }
       `}</style>
     </div>
