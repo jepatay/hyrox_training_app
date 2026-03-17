@@ -14,6 +14,12 @@ import ChecklistPanel from '../components/ChecklistPanel';
 
 const TABS = ['Info', 'Waves', 'Teams', 'Checklist'];
 
+function formatDateWithDay(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 export default function EventEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -23,7 +29,9 @@ export default function EventEditor() {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showTeamForm, setShowTeamForm] = useState(null); // waveId or null
+  const [savedInfo, setSavedInfo] = useState(false);
+  const [savedWaves, setSavedWaves] = useState(false);
+  const [showTeamForm, setShowTeamForm] = useState(null);
   const [editingTeam, setEditingTeam] = useState(null);
 
   useEffect(() => {
@@ -44,6 +52,9 @@ export default function EventEditor() {
         );
         setTeams(teamSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       }
+    } catch (err) {
+      console.error('Failed to load event:', err);
+      alert('Failed to load event. Check Firestore permissions.\n\n' + err.message);
     } finally {
       setLoading(false);
     }
@@ -53,10 +64,9 @@ export default function EventEditor() {
     if (!event) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'events', id), {
-        name: event.name,
-        date: event.date,
-      });
+      await updateDoc(doc(db, 'events', id), { name: event.name, date: event.date });
+      setSavedInfo(true);
+      setTimeout(() => setSavedInfo(false), 2000);
     } finally {
       setSaving(false);
     }
@@ -67,6 +77,8 @@ export default function EventEditor() {
     setSaving(true);
     try {
       await updateDoc(doc(db, 'events', id), { waves: event.waves });
+      setSavedWaves(true);
+      setTimeout(() => setSavedWaves(false), 2000);
     } finally {
       setSaving(false);
     }
@@ -76,10 +88,7 @@ export default function EventEditor() {
     const slots = wave.slots || [];
     const nonPauseSlots = slots.filter((s) => !s.isPause);
     for (const slot of nonPauseSlots) {
-      const teamsInSlot = (slot.teams || []).length;
-      if (teamsInSlot < wave.teamsPerSlot) {
-        return slot.slotIndex;
-      }
+      if ((slot.teams || []).length < wave.teamsPerSlot) return slot.slotIndex;
     }
     return nonPauseSlots.length > 0 ? nonPauseSlots[nonPauseSlots.length - 1].slotIndex : 0;
   }
@@ -88,30 +97,19 @@ export default function EventEditor() {
     const wave = event.waves.find((w) => w.id === waveId);
     if (!wave) return;
     const slotIndex = getNextAvailableSlot(wave);
-
     const teamData = {
-      eventId: id,
-      waveId,
-      slotIndex,
-      ...formData,
-      finishTimeSeconds: null,
-      rank: null,
-      createdAt: serverTimestamp(),
+      eventId: id, waveId, slotIndex, ...formData,
+      finishTimeSeconds: null, rank: null, createdAt: serverTimestamp(),
     };
-
     const ref = await addDoc(collection(db, 'teams'), teamData);
     const newTeam = { id: ref.id, ...teamData };
-
-    // Update slot in wave
     const updatedWaves = event.waves.map((w) => {
       if (w.id !== waveId) return w;
-      const updatedSlots = w.slots.map((s) => {
-        if (s.slotIndex !== slotIndex) return s;
-        return { ...s, teams: [...(s.teams || []), ref.id] };
-      });
+      const updatedSlots = w.slots.map((s) =>
+        s.slotIndex !== slotIndex ? s : { ...s, teams: [...(s.teams || []), ref.id] }
+      );
       return { ...w, slots: updatedSlots };
     });
-
     await updateDoc(doc(db, 'events', id), { waves: updatedWaves });
     setTeams((prev) => [...prev, newTeam]);
     setEvent((prev) => ({ ...prev, waves: updatedWaves }));
@@ -124,20 +122,36 @@ export default function EventEditor() {
     setEditingTeam(null);
   }
 
+  async function changeTeamSlot(teamId, waveId, newSlotIndex) {
+    const team = teams.find((t) => t.id === teamId);
+    if (!team || team.slotIndex === newSlotIndex) return;
+    await updateDoc(doc(db, 'teams', teamId), { slotIndex: newSlotIndex });
+    const updatedWaves = event.waves.map((w) => {
+      if (w.id !== waveId) return w;
+      const updatedSlots = w.slots.map((s) => {
+        if (s.slotIndex === team.slotIndex)
+          return { ...s, teams: (s.teams || []).filter((tid) => tid !== teamId) };
+        if (s.slotIndex === newSlotIndex)
+          return { ...s, teams: [...(s.teams || []), teamId] };
+        return s;
+      });
+      return { ...w, slots: updatedSlots };
+    });
+    await updateDoc(doc(db, 'events', id), { waves: updatedWaves });
+    setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, slotIndex: newSlotIndex } : t)));
+    setEvent((prev) => ({ ...prev, waves: updatedWaves }));
+  }
+
   async function deleteTeam(team) {
     if (!window.confirm(`Remove team "${team.teamName}"?`)) return;
     await deleteDoc(doc(db, 'teams', team.id));
-
-    // Remove from slot
     const updatedWaves = event.waves.map((w) => {
       if (w.id !== team.waveId) return w;
       const updatedSlots = w.slots.map((s) => ({
-        ...s,
-        teams: (s.teams || []).filter((tid) => tid !== team.id),
+        ...s, teams: (s.teams || []).filter((tid) => tid !== team.id),
       }));
       return { ...w, slots: updatedSlots };
     });
-
     await updateDoc(doc(db, 'events', id), { waves: updatedWaves });
     setTeams((prev) => prev.filter((t) => t.id !== team.id));
     setEvent((prev) => ({ ...prev, waves: updatedWaves }));
@@ -152,7 +166,7 @@ export default function EventEditor() {
     );
   }
 
-  const wavesForTeams = (event?.waves || []).filter((w) => !w.isPause);
+  const wavesForTeams = (event?.waves || []).filter((w) => !w.isRest && !w.isPause);
   const checklistItems = config?.checklistItems || [];
 
   return (
@@ -203,10 +217,20 @@ export default function EventEditor() {
                   value={event?.date || ''}
                   onChange={(e) => setEvent((prev) => ({ ...prev, date: e.target.value }))}
                 />
+                {event?.date && (
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '5px', display: 'block', fontFamily: 'DM Mono, monospace' }}>
+                    {formatDateWithDay(event.date)}
+                  </span>
+                )}
               </div>
-              <button className="btn-primary" onClick={saveInfo} disabled={saving} style={{ alignSelf: 'flex-start' }}>
-                {saving ? 'Saving...' : 'Save'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button className="btn-primary" onClick={saveInfo} disabled={saving} style={{ alignSelf: 'flex-start' }}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                {savedInfo && (
+                  <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontFamily: 'DM Mono, monospace' }}>Saved!</span>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -220,10 +244,13 @@ export default function EventEditor() {
               stationTemplates={config?.stationTemplates || []}
               onWavesChange={(waves) => setEvent((prev) => ({ ...prev, waves }))}
             />
-            <div className="mt-20">
+            <div className="mt-20" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button className="btn-primary" onClick={saveWaves} disabled={saving}>
                 {saving ? 'Saving...' : 'Save Waves'}
               </button>
+              {savedWaves && (
+                <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontFamily: 'DM Mono, monospace' }}>Saved!</span>
+              )}
             </div>
           </div>
         )}
@@ -239,6 +266,8 @@ export default function EventEditor() {
             {wavesForTeams.map((wave) => {
               const cat = config?.categories?.find((c) => c.id === wave.categoryId);
               const waveTeams = teams.filter((t) => t.waveId === wave.id);
+              const allSlots = recalculateSlotTimes(wave.slots || [], wave.startTime, wave.intervalMinutes);
+              const assignableSlots = allSlots.filter((s) => !s.isPause);
               return (
                 <div key={wave.id} className="wave-teams-section">
                   <div className="wave-teams-header">
@@ -271,15 +300,13 @@ export default function EventEditor() {
                           <th>Bib</th>
                           <th>Team</th>
                           <th>Athletes</th>
-                          <th>Slot</th>
+                          <th>Start Time</th>
                           <th></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {waveTeams.map((team) => {
-                          const slots = recalculateSlotTimes(wave.slots || [], wave.startTime, wave.intervalMinutes);
-                          const slot = slots.find((s) => s.slotIndex === team.slotIndex);
-                          return editingTeam === team.id ? (
+                        {waveTeams.map((team) => (
+                          editingTeam === team.id ? (
                             <tr key={team.id}>
                               <td colSpan={5}>
                                 <TeamForm
@@ -298,8 +325,16 @@ export default function EventEditor() {
                                 {[team.athlete1First, team.athlete1Last].filter(Boolean).join(' ')}
                                 {team.athlete2First && ` / ${[team.athlete2First, team.athlete2Last].filter(Boolean).join(' ')}`}
                               </td>
-                              <td className="mono" style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                                {slot?.scheduledTime || '—'}
+                              <td>
+                                <select
+                                  value={team.slotIndex}
+                                  onChange={(e) => changeTeamSlot(team.id, wave.id, Number(e.target.value))}
+                                  style={{ fontFamily: 'DM Mono, monospace', fontSize: '0.82rem', padding: '2px 4px' }}
+                                >
+                                  {assignableSlots.map((s) => (
+                                    <option key={s.slotIndex} value={s.slotIndex}>{s.scheduledTime}</option>
+                                  ))}
+                                </select>
                               </td>
                               <td>
                                 <div className="flex gap-4">
@@ -308,8 +343,8 @@ export default function EventEditor() {
                                 </div>
                               </td>
                             </tr>
-                          );
-                        })}
+                          )
+                        ))}
                       </tbody>
                     </table>
                   )}
