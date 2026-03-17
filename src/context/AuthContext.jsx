@@ -10,10 +10,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        await ensureConfigExists();
-      }
       setUser(firebaseUser);
+      if (firebaseUser) {
+        ensureConfigExists().catch(console.error);
+      }
     });
     return unsub;
   }, []);
