@@ -40,6 +40,9 @@ export default function Dashboard() {
         checklist,
       });
       navigate(`/event/${ref.id}`);
+    } catch (err) {
+      console.error('Failed to create event:', err);
+      alert('Failed to create event. Check Firestore permissions.\n\n' + err.message);
     } finally {
       setCreating(false);
     }

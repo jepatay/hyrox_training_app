@@ -361,9 +361,15 @@ export default function Settings() {
   }, []);
 
   async function load() {
-    const cfg = await ensureConfigExists();
-    setConfig(cfg);
-    setLoading(false);
+    try {
+      const cfg = await ensureConfigExists();
+      setConfig(cfg);
+    } catch (err) {
+      console.error('Failed to load config:', err);
+      alert('Failed to load settings. Check Firestore permissions.\n\n' + err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function save() {
