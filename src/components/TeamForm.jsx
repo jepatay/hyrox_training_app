@@ -1,29 +1,48 @@
 import { useState } from 'react';
 
-const EMPTY_FORM = {
-  teamName: '',
-  bibNumber: '',
-  athlete1First: '',
-  athlete1Last: '',
-  athlete2First: '',
-  athlete2Last: '',
-};
-
 export default function TeamForm({ categoryType, onSave, onCancel, initialData }) {
-  const [form, setForm] = useState(initialData || EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
   const isDouble = categoryType === 'double';
 
-  function handleChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }
+  // Single name field per athlete — join existing first+last for backwards compat
+  const [name, setName] = useState(() => {
+    if (!initialData) return '';
+    return [initialData.athlete1First, initialData.athlete1Last].filter(Boolean).join(' ')
+      || initialData.teamName || '';
+  });
+  const [athlete1, setAthlete1] = useState(() => {
+    if (!initialData) return '';
+    return [initialData.athlete1First, initialData.athlete1Last].filter(Boolean).join(' ') || '';
+  });
+  const [athlete2, setAthlete2] = useState(() => {
+    if (!initialData) return '';
+    return [initialData.athlete2First, initialData.athlete2Last].filter(Boolean).join(' ') || '';
+  });
+  const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.teamName.trim()) return;
+    const a1 = isDouble ? athlete1.trim() : name.trim();
+    if (!a1) return;
+
+    const formData = isDouble
+      ? {
+          teamName: [athlete1.trim(), athlete2.trim()].filter(Boolean).join(' / '),
+          athlete1First: athlete1.trim(),
+          athlete1Last: '',
+          athlete2First: athlete2.trim(),
+          athlete2Last: '',
+        }
+      : {
+          teamName: name.trim(),
+          athlete1First: name.trim(),
+          athlete1Last: '',
+          athlete2First: '',
+          athlete2Last: '',
+        };
+
     setSaving(true);
     try {
-      await onSave(form);
+      await onSave(formData);
     } finally {
       setSaving(false);
     }
@@ -31,80 +50,43 @@ export default function TeamForm({ categoryType, onSave, onCancel, initialData }
 
   return (
     <form onSubmit={handleSubmit} className="team-form">
-      <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <div className="form-group">
-          <label>Team Name *</label>
-          <input
-            name="teamName"
-            value={form.teamName}
-            onChange={handleChange}
-            placeholder="e.g. Thunder Duo"
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>Bib Number</label>
-          <input
-            name="bibNumber"
-            value={form.bibNumber}
-            onChange={handleChange}
-            placeholder="e.g. A01"
-            className="mono-input"
-          />
-        </div>
-      </div>
-
-      <div className="form-section-label">
-        {isDouble ? 'Athlete 1' : 'Athlete'}
-      </div>
-      <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <div className="form-group">
-          <label>First Name *</label>
-          <input
-            name="athlete1First"
-            value={form.athlete1First}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>Last Name *</label>
-          <input
-            name="athlete1Last"
-            value={form.athlete1Last}
-            onChange={handleChange}
-            required
-          />
-        </div>
-      </div>
-
-      {isDouble && (
-        <>
-          <div className="form-section-label">Athlete 2</div>
-          <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="form-group">
-              <label>First Name</label>
-              <input
-                name="athlete2First"
-                value={form.athlete2First}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="form-group">
-              <label>Last Name</label>
-              <input
-                name="athlete2Last"
-                value={form.athlete2Last}
-                onChange={handleChange}
-              />
-            </div>
+      {isDouble ? (
+        <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className="form-group">
+            <label>Athlete 1 *</label>
+            <input
+              value={athlete1}
+              onChange={(e) => setAthlete1(e.target.value)}
+              placeholder="Full name"
+              required
+              autoFocus
+            />
           </div>
-        </>
+          <div className="form-group">
+            <label>Athlete 2</label>
+            <input
+              value={athlete2}
+              onChange={(e) => setAthlete2(e.target.value)}
+              placeholder="Full name"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="form-group">
+          <label>Name *</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Full name"
+            required
+            autoFocus
+          />
+        </div>
       )}
 
-      <div className="flex gap-8 mt-16">
+      <div className="flex gap-8 mt-12">
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Saving...' : (initialData ? 'Update Team' : 'Add Team')}
+          {saving ? 'Saving...' : (initialData ? 'Update' : 'Add')}
         </button>
         <button type="button" className="btn-secondary" onClick={onCancel}>
           Cancel
@@ -120,19 +102,6 @@ export default function TeamForm({ categoryType, onSave, onCancel, initialData }
           background: var(--bg-elevated);
           border: 1px solid var(--border);
           border-radius: var(--radius-lg);
-        }
-        .form-section-label {
-          font-family: 'Barlow Condensed', sans-serif;
-          font-size: 0.78rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: var(--yellow);
-          padding-bottom: 4px;
-          border-bottom: 1px solid var(--border);
-        }
-        .mono-input {
-          font-family: 'DM Mono', monospace;
         }
       `}</style>
     </form>

@@ -155,8 +155,13 @@ export default function EventEditor() {
     const wave = event.waves.find((w) => w.id === waveId);
     if (!wave) return;
     const slotIndex = getNextAvailableSlot(wave);
+
+    const existingBibs = teams.map((t) => parseInt(t.bibNumber, 10)).filter((n) => !isNaN(n));
+    const nextBib = String(existingBibs.length > 0 ? Math.max(...existingBibs) + 1 : 100);
+
     const teamData = {
       eventId: id, waveId, slotIndex, ...formData,
+      bibNumber: nextBib,
       finishTimeSeconds: null, rank: null, createdAt: serverTimestamp(),
     };
     const ref = await addDoc(collection(db, 'teams'), teamData);
