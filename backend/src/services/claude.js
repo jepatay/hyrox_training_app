@@ -1,12 +1,20 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function chat(prompt, maxTokens = 400) {
+  if (!process.env.OPENAI_API_KEY) {
+    return 'Set OPENAI_API_KEY in your backend .env file to enable AI features.';
+  }
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  return completion.choices[0].message.content;
+}
 
 export async function generateCoachingFeedback({ session, recentSessions, objectives }) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return 'Set ANTHROPIC_API_KEY to enable AI coaching feedback.';
-  }
-
   const recentSummary = recentSessions
     .slice(0, 7)
     .map(s => `- ${s.type} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'})`)
@@ -34,20 +42,10 @@ ${objSummary}
 
 Give specific, actionable feedback on training balance and race preparation. Be direct and motivating.`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 400,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return message.content[0].text;
+  return chat(prompt, 400);
 }
 
 export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives }) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return 'Set ANTHROPIC_API_KEY to enable AI training suggestions.';
-  }
-
   const recentSummary = recentSessions
     .slice(0, 5)
     .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
@@ -80,21 +78,10 @@ Create a structured workout with:
 
 Be specific with numbers. Use Hyrox-relevant exercises where appropriate (sled push/pull, SkiErg, burpee broad jumps, wall balls, sandbag lunges, etc.).`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 1000,
-    thinking: { type: 'adaptive' },
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return message.content.find(b => b.type === 'text')?.text || '';
+  return chat(prompt, 1000);
 }
 
 export async function generateMonthlyReport({ sessions, objectives, month, year }) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return 'Set ANTHROPIC_API_KEY to enable AI monthly reports.';
-  }
-
   const breakdown = sessions.reduce((acc, s) => {
     acc[s.type] = (acc[s.type] || 0) + 1;
     return acc;
@@ -131,12 +118,5 @@ Provide:
 
 Be specific and motivating.`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 800,
-    thinking: { type: 'adaptive' },
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return message.content.find(b => b.type === 'text')?.text || '';
+  return chat(prompt, 800);
 }
