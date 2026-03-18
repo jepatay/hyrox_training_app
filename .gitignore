@@ -27,3 +27,9 @@ dist-ssr
 .env
 .env.local
 .env.production
+backend/.env
+backend/.env.local
+
+# Firebase service account (never commit!)
+*service-account*.json
+firebase-adminsdk*.json

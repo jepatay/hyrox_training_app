@@ -1,0 +1,33 @@
+services:
+  # Backend API
+  - type: web
+    name: hyrox-training-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: ACCESS_TOKEN
+        sync: false  # Set this manually in Render dashboard
+      - key: FRONTEND_URL
+        sync: false  # Set to your frontend URL
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false  # Paste your Firebase service account JSON
+
+  # Frontend (Static Site)
+  - type: web
+    name: hyrox-training-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # Set to your backend Render URL, e.g. https://hyrox-training-api.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

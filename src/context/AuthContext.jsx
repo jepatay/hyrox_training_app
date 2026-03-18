@@ -1,26 +1,32 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase';
-import { ensureConfigExists } from '../utils/firestoreUtils';
+import { createContext, useContext, useEffect, useState } from 'react'
 
-const AuthContext = createContext(null);
+const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(undefined); // undefined = loading
+  const [authorized, setAuthorized] = useState(null) // null = checking
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        ensureConfigExists().catch(console.error);
-      }
-    });
-    return unsub;
-  }, []);
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('access')
+    const stored = sessionStorage.getItem('access_token')
 
-  return <AuthContext.Provider value={{ user }}>{children}</AuthContext.Provider>;
+    if (token) {
+      sessionStorage.setItem('access_token', token)
+      setAuthorized(token)
+    } else if (stored) {
+      setAuthorized(stored)
+    } else {
+      setAuthorized(false)
+    }
+  }, [])
+
+  return (
+    <AuthContext.Provider value={{ authorized }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  return useContext(AuthContext)
 }

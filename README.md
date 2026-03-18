@@ -1,167 +1,198 @@
-# HYROX Box Event Manager
+# HYROX Training Hub
 
-A full-stack admin tool for CrossFit/HYROX boxes to manage internal simulation events — waves, teams, start lists, results, and event checklists.
-
-**Stack:** React + Vite · Firebase Firestore + Auth · Deployed on Render.com
-
----
-
-## Firebase Setup
-
-### 1. Create Project
-1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
-2. Click **Add project** → name it `hyrox-box` → Continue through setup
-
-### 2. Create Firestore Database
-1. In the left sidebar: **Build → Firestore Database**
-2. Click **Create database**
-3. Choose **Start in production mode**
-4. Select a region (recommended: `europe-west1`)
-
-### 3. Enable Authentication
-1. In the left sidebar: **Build → Authentication**
-2. Click **Get started**
-3. Go to **Sign-in method** tab → Enable **Email/Password**
-
-### 4. Add Admin User
-1. Stay in Authentication → click **Users** tab
-2. Click **Add user**
-3. Email: `admin@hyrox.local` (or any email you prefer)
-4. Password: choose a strong password — this is the **shared admin login**
-5. Save the credentials somewhere secure
-
-### 5. Get Firebase Config
-1. Go to **Project Settings** (gear icon in sidebar)
-2. Scroll to **Your apps** → click **Add app** → select **Web** (`</>` icon)
-3. Register app with any nickname (e.g. `hyrox-web`)
-4. Copy the `firebaseConfig` object shown
-
-### 6. Create Environment File
-In the project root, create a `.env` file:
-
-```
-VITE_FIREBASE_API_KEY=AIza...
-VITE_FIREBASE_AUTH_DOMAIN=hyrox-box.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=hyrox-box
-VITE_FIREBASE_STORAGE_BUCKET=hyrox-box.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-VITE_FIREBASE_APP_ID=1:123456789:web:abc123
-```
-
-Fill in the values from your `firebaseConfig`.
-
-> **IMPORTANT:** Never commit `.env` to Git. It is already in `.gitignore`.
-
-### 7. Set Firestore Security Rules
-1. Go to **Firestore Database → Rules**
-2. Replace the content with:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-3. Click **Publish**
-
----
-
-## Local Development
-
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) and log in with your admin credentials.
-
-On first login, the app automatically seeds the `config/main` Firestore document with default categories, the Full HYROX station template, and the default checklist.
-
----
-
-## Render.com Deployment
-
-### 1. Push to GitHub
-Push this project to a GitHub repository (private recommended).
-
-### 2. Create Static Site on Render
-1. Go to [https://render.com](https://render.com) → **New → Static Site**
-2. Connect your GitHub repo
-3. Configure:
-   - **Build Command:** `npm run build`
-   - **Publish Directory:** `dist`
-
-### 3. Add Environment Variables
-In the Render dashboard → **Environment** tab, add all six `VITE_` variables from your `.env` file:
-
-| Key | Value |
-|-----|-------|
-| `VITE_FIREBASE_API_KEY` | `AIza...` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `hyrox-box.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | `hyrox-box` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `hyrox-box.appspot.com` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `123456789` |
-| `VITE_FIREBASE_APP_ID` | `1:123456789:web:abc123` |
-
-### 4. Deploy
-Click **Save Changes** → Render will build and deploy. You will get a URL like `https://hyrox-box.onrender.com`.
-
-### 5. Optional: Obscure the URL
-For extra privacy, rename the Render app to something non-descriptive (e.g. `ht-ops-k7z`). The app includes `robots.txt` with `Disallow: /` to prevent search indexing.
+A private personal training tracker for Hyrox and running training. Built with React + Vite (frontend) and Node.js + Express + Firebase Firestore (backend).
 
 ---
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Dashboard** | View, create, and manage events |
-| **Event Editor** | Edit event info, manage waves, assign teams, track checklist |
-| **Waves** | Define categories, start times, intervals, station templates, pause slots |
-| **Teams** | Add athletes to waves, auto-assign to slots |
-| **Start List** | Clean printable start list grouped by wave/category |
-| **Results** | Enter finish times (MM:SS), auto-ranks by category |
-| **Settings** | Edit categories, station templates, global checklist |
+- **Dashboard** — Training load chart, upcoming objectives, recent sessions
+- **Training Log** — Log running, Hyrox, strength, CrossFit, and recovery sessions with RPE and coaching feedback
+- **Objectives** — Track upcoming races with priority (A/B/C goals), target times, and countdown
+- **Performance Records** — Log 5K and Hyrox race results with split times and progression charts
+- **Training Suggestion** — Get a coach-generated workout based on your location, equipment, focus, and time
+- **Monthly Report** — Automated analysis with strengths, weaknesses, and coaching recommendations
+- **URL Token Auth** — No login required. Access via `/?access=YOUR_SECRET_TOKEN`
 
 ---
 
 ## Project Structure
 
 ```
-src/
-├── firebase.js              # Firebase init (reads from .env)
-├── App.jsx                  # Router + protected routes
-├── context/
-│   └── AuthContext.jsx      # Firebase auth state + seed on first login
-├── pages/
-│   ├── Login.jsx
-│   ├── Dashboard.jsx
-│   ├── EventEditor.jsx      # Tabs: Info / Waves / Teams / Checklist
-│   ├── StartList.jsx        # Printable start list
-│   ├── Results.jsx          # Time entry + auto-ranking
-│   └── Settings.jsx         # Tabs: Categories / Station Templates / Checklist
-├── components/
-│   ├── NavBar.jsx
-│   ├── WaveBuilder.jsx      # Wave editor with pause slots
-│   ├── TeamForm.jsx         # Add/edit team form
-│   ├── ChecklistPanel.jsx   # Event checklist with progress bar
-│   └── SlotTimeline.jsx     # Slot timeline display
-└── utils/
-    ├── timeUtils.js         # MM:SS <-> seconds, slot time calculation
-    └── firestoreUtils.js    # Config seeding, default data
+HYROX-Box-Event-Manager/
+├── src/                          # React frontend
+│   ├── components/
+│   │   ├── ui/                   # ShadCN-style UI primitives
+│   │   └── Layout.jsx            # Sidebar navigation layout
+│   ├── context/
+│   │   └── AuthContext.jsx       # URL token auth context
+│   ├── hooks/
+│   │   └── useApi.js             # Data fetching hook
+│   ├── lib/
+│   │   ├── api.js                # Backend API client
+│   │   └── utils.js              # Utilities (cn, formatDate, etc.)
+│   ├── pages/
+│   │   ├── Dashboard.jsx
+│   │   ├── TrainingLog.jsx
+│   │   ├── Objectives.jsx
+│   │   ├── PerformanceRecords.jsx
+│   │   ├── TrainingSuggestion.jsx
+│   │   ├── MonthlyReport.jsx
+│   │   └── Unauthorized.jsx
+│   ├── App.jsx
+│   └── main.jsx
+├── backend/
+│   ├── src/
+│   │   ├── index.js              # Express server
+│   │   ├── firebase.js           # Firebase Admin SDK init
+│   │   ├── middleware/
+│   │   │   └── auth.js           # Token authentication
+│   │   ├── routes/
+│   │   │   ├── training.js
+│   │   │   ├── objectives.js
+│   │   │   ├── records.js
+│   │   │   ├── suggestions.js
+│   │   │   ├── reports.js
+│   │   │   └── coaching.js
+│   │   └── services/
+│   │       ├── coaching.js       # Coaching feedback & monthly report logic
+│   │       └── suggestions.js    # Training suggestion generator
+│   ├── package.json
+│   └── .env.example
+├── .env.example                  # Frontend env vars
+├── render.yaml                   # Render.com deployment config
+├── tailwind.config.js
+└── vite.config.js
 ```
 
 ---
 
-## Data Collections (Firestore)
+## Quick Start (Local)
+
+### Prerequisites
+- Node.js 18+
+- Firebase project with Firestore enabled
+
+### 1. Clone and install
+
+```bash
+# Frontend dependencies
+npm install
+
+# Backend dependencies
+cd backend && npm install
+```
+
+### 2. Configure Firebase
+
+1. Go to [Firebase Console](https://console.firebase.google.com)
+2. Create a new project (or use existing)
+3. Enable **Firestore Database** (start in test mode or use the provided rules)
+4. Go to **Project Settings → Service Accounts → Generate new private key**
+5. Download the JSON file
+
+### 3. Configure environment variables
+
+**Frontend** — copy `.env.example` to `.env`:
+```env
+VITE_API_URL=http://localhost:3001/api
+```
+
+**Backend** — copy `backend/.env.example` to `backend/.env`:
+```env
+PORT=3001
+ACCESS_TOKEN=your_secret_token_here
+FRONTEND_URL=http://localhost:5173
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
+```
+
+Paste your entire Firebase service account JSON as a single line in `FIREBASE_SERVICE_ACCOUNT_JSON`.
+
+### 4. Start the servers
+
+```bash
+# Terminal 1 - Backend
+cd backend && npm run dev
+
+# Terminal 2 - Frontend
+npm run dev
+```
+
+### 5. Access the app
+
+```
+http://localhost:5173/?access=your_secret_token_here
+```
+
+---
+
+## Deploy on Render.com
+
+### Backend (Web Service)
+
+1. Create a **New Web Service** → connect your GitHub repo
+2. Set **Root Directory** to `backend`
+3. Set **Build Command**: `npm install`
+4. Set **Start Command**: `npm start`
+5. Set environment variables:
+   - `ACCESS_TOKEN` = your secret token
+   - `FRONTEND_URL` = your frontend Render URL
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` = your Firebase service account JSON (one line)
+
+### Frontend (Static Site)
+
+1. Create a **New Static Site** → connect your GitHub repo
+2. Set **Build Command**: `npm install && npm run build`
+3. Set **Publish Directory**: `dist`
+4. Set environment variable:
+   - `VITE_API_URL` = your backend Render URL + `/api` (e.g. `https://hyrox-api.onrender.com/api`)
+5. Add rewrite rule: `/* → /index.html` (for SPA routing)
+
+---
+
+## Access / Security
+
+The app is protected by a URL token. No Google login or user accounts needed.
+
+- Access URL: `https://yourapp.onrender.com/?access=YOUR_SECRET_TOKEN`
+- The token is stored in `sessionStorage` after first use, so you only need the URL once per browser session
+- The backend validates the token via `X-Access-Token` header on every API request
+- Firestore rules block all direct client access — everything goes through the backend
+
+**Generate a secure token:**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+---
+
+## Firestore Collections
 
 | Collection | Description |
-|------------|-------------|
-| `config/main` | Global config: categories, station templates, checklist items |
-| `events` | Events with embedded waves and checklist state |
-| `teams` | Teams with athlete info, slot assignment, finish times |
+|---|---|
+| `training_sessions` | All training sessions |
+| `objectives` | Race objectives and goals |
+| `performance_records` | 5K and Hyrox race results |
+
+---
+
+## Future Extensions
+
+The code is structured to support:
+- **AI-powered coaching** — replace `coaching.js` and `suggestions.js` with Claude AI API calls
+- **Image upload** — add a `/api/media` route with Firebase Storage
+- **Voice input** — add Web Speech API on the frontend
+- **Advanced analytics** — add more charts and performance trend calculations
+- **Mobile optimisation** — the layout is responsive but can be enhanced for mobile-first use
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, Vite, TailwindCSS v3, ShadCN UI, Recharts |
+| Backend | Node.js, Express 4, Firebase Admin SDK |
+| Database | Firebase Firestore (free tier) |
+| Auth | URL token (`?access=...`) |
+| Hosting | Render.com (backend: Web Service, frontend: Static Site) |
