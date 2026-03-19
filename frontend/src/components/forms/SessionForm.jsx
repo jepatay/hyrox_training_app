@@ -170,7 +170,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
             </div>
           </div>
 
-          {(form.type === 'running' || form.type === 'hyrox_training') && (
+          {(form.type === 'running' || form.type === 'hyrox_training' || form.type === 'hyrox_competition') && (
             <div className="space-y-1.5">
               <Label>Running Distance (km)</Label>
               <Input type="number" placeholder="5.0" step="0.1" min="0" value={form.runningDistance} onChange={e => set('runningDistance', e.target.value)} />

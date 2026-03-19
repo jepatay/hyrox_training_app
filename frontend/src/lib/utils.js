@@ -35,6 +35,7 @@ export function formatDuration(minutes) {
 export const SESSION_TYPES = [
   { value: 'running', label: 'Running', color: '#3b82f6', icon: '🏃' },
   { value: 'hyrox_training', label: 'Hyrox Training', color: '#f97316', icon: '🔥' },
+  { value: 'hyrox_competition', label: 'Hyrox Race', color: '#ef4444', icon: '🏅' },
   { value: 'gym_strength', label: 'Gym Strength', color: '#8b5cf6', icon: '💪' },
   { value: 'crossfit', label: 'CrossFit Class', color: '#10b981', icon: '⚡' },
   { value: 'recovery', label: 'Recovery', color: '#6b7280', icon: '🧘' },
