@@ -12,10 +12,7 @@ services:
       - key: PORT
         value: 3001
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: hyrox-training-frontend
-          property: url
+        value: https://hyrox-training-frontend.onrender.com
       - key: ACCESS_TOKEN
         sync: false
       - key: FIREBASE_PROJECT_ID
@@ -36,9 +33,6 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: hyrox-training-api
-          property: url
+        value: https://hyrox-training-api.onrender.com
       - key: VITE_ACCESS_TOKEN
         sync: false
