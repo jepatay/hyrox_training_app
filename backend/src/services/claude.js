@@ -1,10 +1,13 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openai;
 
 async function chat(prompt, maxTokens = 400) {
   if (!process.env.OPENAI_API_KEY) {
     return 'Set OPENAI_API_KEY in your backend .env file to enable AI features.';
+  }
+  if (!openai) {
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
