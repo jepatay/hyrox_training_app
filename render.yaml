@@ -9,8 +9,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
       - key: FRONTEND_URL
         value: https://hyrox-training-app.onrender.com
       - key: ACCESS_TOKEN
