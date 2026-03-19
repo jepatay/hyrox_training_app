@@ -32,5 +32,3 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://hyrox-training-api.onrender.com
-      - key: VITE_ACCESS_TOKEN
-        sync: false
