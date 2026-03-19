@@ -15,7 +15,7 @@ services:
         fromService:
           type: web
           name: hyrox-training-frontend
-          property: host
+          property: url
       - key: ACCESS_TOKEN
         sync: false
       - key: FIREBASE_PROJECT_ID
@@ -39,4 +39,6 @@ services:
         fromService:
           type: web
           name: hyrox-training-api
-          property: host
+          property: url
+      - key: VITE_ACCESS_TOKEN
+        sync: false
