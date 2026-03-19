@@ -1,24 +1,24 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const tokenFromUrl = searchParams.get('access');
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('access');
     const storedToken = sessionStorage.getItem('access_token');
 
     if (tokenFromUrl) {
       sessionStorage.setItem('access_token', tokenFromUrl);
       setIsAuthorized(true);
       // Remove token from URL for cleanliness
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('access');
-      setSearchParams(newParams, { replace: true });
+      params.delete('access');
+      const newSearch = params.toString();
+      const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '');
+      window.history.replaceState(null, '', newUrl);
     } else if (storedToken) {
       setIsAuthorized(true);
     }
