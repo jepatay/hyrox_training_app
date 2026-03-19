@@ -14,8 +14,17 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(helmet());
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://hyrox-training-frontend.onrender.com',
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl, Postman) and known origins
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
