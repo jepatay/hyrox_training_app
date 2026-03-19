@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 3001
       - key: FRONTEND_URL
-        value: https://hyrox-training-frontend.onrender.com
+        value: https://hyrox-training-app.onrender.com
       - key: ACCESS_TOKEN
         sync: false
       - key: FIREBASE_PROJECT_ID

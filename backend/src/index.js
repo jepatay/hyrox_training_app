@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet());
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://hyrox-training-frontend.onrender.com',
+  'https://hyrox-training-app.onrender.com',
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 app.use(cors({
