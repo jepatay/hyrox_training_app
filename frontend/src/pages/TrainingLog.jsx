@@ -142,7 +142,6 @@ export default function TrainingLog() {
                         {session.duration && <span className="text-xs text-muted-foreground">{formatDuration(session.duration)}</span>}
                         {session.runningDistance && <span className="text-xs text-muted-foreground">{session.runningDistance} km</span>}
                         {session.rpe && <span className="text-xs font-medium text-orange-400">RPE {session.rpe}</span>}
-                        {session.feeling && <span className="text-xs text-muted-foreground capitalize">{session.feeling}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
