@@ -27,7 +27,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
     duration: session?.duration || '',
     runningDistance: session?.runningDistance || '',
     rpe: session?.rpe || '',
-    feeling: session?.feeling || '',
+
     notes: session?.notes || '',
     exercises: session?.exercises || [],
   });
@@ -180,22 +180,9 @@ export default function SessionForm({ session, onClose, onSaved }) {
           {form.status === 'completed' && (
             <div className="border border-border rounded-lg p-4 space-y-4">
               <p className="text-sm font-medium text-muted-foreground">Post-Session Feedback</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>RPE (1–10)</Label>
-                  <Input type="number" min="1" max="10" placeholder="7" value={form.rpe} onChange={e => set('rpe', e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Feeling</Label>
-                  <Select value={form.feeling} onValueChange={v => set('feeling', v)}>
-                    <SelectTrigger><SelectValue placeholder="How did it feel?" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="easy">😌 Easy</SelectItem>
-                      <SelectItem value="normal">😊 Normal</SelectItem>
-                      <SelectItem value="hard">😤 Hard</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-1.5">
+                <Label>RPE (1–10)</Label>
+                <Input type="number" min="1" max="10" placeholder="7" value={form.rpe} onChange={e => set('rpe', e.target.value)} />
               </div>
             </div>
           )}

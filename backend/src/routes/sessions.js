@@ -38,7 +38,7 @@ router.post('/', async (req, res) => {
     const {
       date, type, status, location, equipment,
       exercises, runningDistance, intervals, weights, duration,
-      rpe, feeling, notes, coachingFeedback,
+      rpe, notes, coachingFeedback,
     } = req.body;
 
     if (!date || !type) {
@@ -58,7 +58,6 @@ router.post('/', async (req, res) => {
       weights: weights || null,
       duration: duration || null,
       rpe: rpe || null,
-      feeling: feeling || null,
       notes: notes || '',
       coachingFeedback: coachingFeedback || null,
       createdAt: now,
