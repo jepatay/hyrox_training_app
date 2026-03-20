@@ -48,7 +48,7 @@ Give specific, actionable feedback on training balance and race preparation. Be 
   return chat(prompt, 400);
 }
 
-export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives }) {
+export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes }) {
   const recentSummary = recentSessions
     .slice(0, 5)
     .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
@@ -59,13 +59,23 @@ export async function generateTrainingSuggestion({ location, equipment, focus, t
     .map(o => `- ${o.name} [${o.priority}] on ${o.date?.slice(0, 10) || '?'}`)
     .join('\n') || 'No objectives set';
 
+  const profileLine = [
+    profile?.gender ? `Gender: ${profile.gender}` : null,
+    profile?.age ? `Age: ${profile.age}` : null,
+  ].filter(Boolean).join(', ') || 'Not specified';
+
+  const notesLine = notes?.trim() ? `\nAthlete notes for today: ${notes.trim()}` : '';
+
   const prompt = `You are an expert Hyrox and running coach. Generate a complete, specific training session.
 
-Context:
+Athlete profile:
+- ${profileLine}
+
+Session context:
 - Location: ${location}
 - Equipment: ${equipment}
 - Focus: ${focus}
-- Time available: ${timeAvailable} minutes
+- Time available: ${timeAvailable} minutes${notesLine}
 
 Recent training:
 ${recentSummary}
@@ -77,7 +87,7 @@ Create a structured workout with:
 1. **Warm-up** (5-10 min): specific exercises
 2. **Main workout**: detailed exercises with sets/reps/distances/rest periods
 3. **Cool-down** (5-10 min): specific stretches
-4. **Coach notes**: why this session is good for their goals
+4. **Coach notes**: why this session is good for their goals (consider athlete profile and any notes provided)
 
 Be specific with numbers. Use Hyrox-relevant exercises where appropriate (sled push/pull, SkiErg, burpee broad jumps, wall balls, sandbag lunges, etc.).`;
 

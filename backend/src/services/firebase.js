@@ -22,6 +22,7 @@ export const collections = {
   objectives: () => getDb().collection('objectives'),
   sessions: () => getDb().collection('sessions'),
   records: () => getDb().collection('records'),
+  profile: () => getDb().collection('profile'),
 };
 
 export function toDate(ts) {

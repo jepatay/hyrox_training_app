@@ -72,6 +72,11 @@ export const suggestionsApi = {
   generate: (data) => api.post('/api/suggestions', data),
 };
 
+export const profileApi = {
+  get: () => api.get('/api/profile'),
+  update: (data) => api.put('/api/profile', data),
+};
+
 export const reportsApi = {
   monthly: (month, year) => api.get(`/api/reports/monthly?month=${month}&year=${year}`),
 };
