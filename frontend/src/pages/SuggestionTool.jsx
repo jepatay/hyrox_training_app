@@ -52,16 +52,20 @@ export default function SuggestionTool() {
         trainingPatterns: data.trainingPatterns || '',
       });
     }).catch(() => {});
-    loadStationFocus();
+    // Load cached analysis — no AI call, just reads from Firestore
+    suggestionsApi.getStationFocus().then(data => {
+      if (data) setStationFocus(data);
+    }).catch(() => {});
   }, []);
 
-  async function loadStationFocus() {
+  async function recalculateStationFocus() {
     setFocusLoading(true);
     try {
-      const data = await suggestionsApi.stationFocus();
+      const data = await suggestionsApi.recalculateStationFocus();
       setStationFocus(data);
+      toast({ title: 'Focus updated', description: 'Analysis saved based on your current training data.' });
     } catch {
-      // silently ignore if AI unavailable
+      toast({ title: 'Error', description: 'Could not generate analysis.', variant: 'destructive' });
     } finally {
       setFocusLoading(false);
     }
@@ -167,20 +171,20 @@ export default function SuggestionTool() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={loadStationFocus}
+            onClick={recalculateStationFocus}
             disabled={focusLoading}
             className="gap-1 text-xs h-7 px-2 text-muted-foreground"
           >
             <RefreshCw className={`h-3 w-3 ${focusLoading ? 'animate-spin' : ''}`} />
-            {focusLoading ? 'Analysing…' : 'Refresh'}
+            {focusLoading ? 'Analysing…' : 'Recalculate'}
           </Button>
         </CardHeader>
         <CardContent>
-          {focusLoading && !stationFocus && (
+          {focusLoading && (
             <p className="text-xs text-muted-foreground">Analysing your training data…</p>
           )}
           {!focusLoading && !stationFocus && (
-            <p className="text-xs text-muted-foreground">No analysis yet. Add some sessions and objectives first, then hit Refresh.</p>
+            <p className="text-xs text-muted-foreground">No analysis yet. Add some sessions and objectives, then click Recalculate.</p>
           )}
           {stationFocus && (
             <div className="space-y-2">
@@ -202,6 +206,11 @@ export default function SuggestionTool() {
                   </div>
                 );
               })}
+              {stationFocus.updatedAt && (
+                <p className="text-xs text-muted-foreground pt-1">
+                  Last calculated: {new Date(stationFocus.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+              )}
             </div>
           )}
         </CardContent>

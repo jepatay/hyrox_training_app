@@ -24,6 +24,7 @@ async function chatJson(prompt, maxTokens = 600) {
   const completion = await getClient().chat.completions.create({
     model: 'gpt-4o',
     max_tokens: maxTokens,
+    temperature: 0,
     response_format: { type: 'json_object' },
     messages: [{ role: 'user', content: prompt }],
   });

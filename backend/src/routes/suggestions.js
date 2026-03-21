@@ -34,8 +34,21 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET station focus analysis
+// GET station focus — returns cached value from profile (fast, no AI call)
 router.get('/station-focus', async (_req, res) => {
+  try {
+    const profileDoc = await collections.profile().doc('main').get();
+    const profile = profileDoc.exists ? profileDoc.data() : {};
+    if (!profile.stationFocus) return res.json(null);
+    res.json({ ...profile.stationFocus, updatedAt: profile.stationFocusUpdatedAt || null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch station focus' });
+  }
+});
+
+// POST station focus — regenerates from training data and saves to profile
+router.post('/station-focus', async (_req, res) => {
   try {
     const [recentSnap, objSnap, recordsSnap, profileDoc] = await Promise.all([
       collections.sessions().orderBy('date', 'desc').limit(10).get(),
@@ -52,7 +65,13 @@ router.get('/station-focus', async (_req, res) => {
     const focus = await generateStationFocus({ recentSessions, objectives, records, profile });
     if (!focus) return res.status(503).json({ error: 'AI unavailable' });
 
-    res.json(focus);
+    const updatedAt = new Date().toISOString();
+    await collections.profile().doc('main').set(
+      { stationFocus: focus, stationFocusUpdatedAt: updatedAt },
+      { merge: true }
+    );
+
+    res.json({ ...focus, updatedAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate station focus' });
