@@ -41,6 +41,7 @@ export const objectivesApi = {
   create: (data) => api.post('/api/objectives', data),
   update: (id, data) => api.put(`/api/objectives/${id}`, data),
   delete: (id) => api.delete(`/api/objectives/${id}`),
+  readiness: (id) => api.post(`/api/objectives/${id}/readiness`, {}),
 };
 
 export const sessionsApi = {
@@ -70,6 +71,7 @@ export const coachingApi = {
 
 export const suggestionsApi = {
   generate: (data) => api.post('/api/suggestions', data),
+  stationFocus: () => api.get('/api/suggestions/station-focus'),
 };
 
 export const profileApi = {

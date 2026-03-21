@@ -18,10 +18,11 @@ router.get('/', async (_req, res) => {
 // PUT profile (upsert)
 router.put('/', async (req, res) => {
   try {
-    const { gender, age } = req.body;
+    const { gender, birthday, trainingPatterns } = req.body;
     const data = {};
     if (gender !== undefined) data.gender = gender;
-    if (age !== undefined) data.age = age;
+    if (birthday !== undefined) data.birthday = birthday;
+    if (trainingPatterns !== undefined) data.trainingPatterns = trainingPatterns;
     await collections.profile().doc(PROFILE_DOC).set(data, { merge: true });
     const updated = await collections.profile().doc(PROFILE_DOC).get();
     res.json(updated.data());

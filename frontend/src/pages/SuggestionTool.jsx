@@ -6,8 +6,26 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Zap, Sparkles, Save, User } from 'lucide-react';
+import { Zap, Sparkles, Save, User, RefreshCw, BarChart2 } from 'lucide-react';
 import SessionForm from '@/components/forms/SessionForm';
+
+const STATIONS = [
+  { key: 'run',              label: 'Run'               },
+  { key: 'skiErg',          label: 'SkiErg'            },
+  { key: 'sledPush',        label: 'Sled Push'         },
+  { key: 'sledPull',        label: 'Sled Pull'         },
+  { key: 'burpeeBroadJump', label: 'Burpee Broad Jump' },
+  { key: 'rowErg',          label: 'Row Erg'           },
+  { key: 'farmersCarry',    label: 'Farmers Carry'     },
+  { key: 'walkingLunges',   label: 'Walking Lunges'    },
+  { key: 'wallBall',        label: 'Wall Ball'         },
+];
+
+function focusBarColor(score) {
+  if (score >= 7) return 'bg-red-500';
+  if (score >= 4) return 'bg-yellow-400';
+  return 'bg-green-500';
+}
 
 export default function SuggestionTool() {
   const [form, setForm] = useState({
@@ -17,8 +35,10 @@ export default function SuggestionTool() {
     timeAvailable: '',
   });
   const [notes, setNotes] = useState('');
-  const [profile, setProfile] = useState({ gender: '', age: '' });
+  const [profile, setProfile] = useState({ gender: '', birthday: '', trainingPatterns: '' });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [stationFocus, setStationFocus] = useState(null);
+  const [focusLoading, setFocusLoading] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showSaveForm, setShowSaveForm] = useState(false);
@@ -26,17 +46,37 @@ export default function SuggestionTool() {
 
   useEffect(() => {
     profileApi.get().then(data => {
-      setProfile({ gender: data.gender || '', age: data.age || '' });
+      setProfile({
+        gender: data.gender || '',
+        birthday: data.birthday || '',
+        trainingPatterns: data.trainingPatterns || '',
+      });
     }).catch(() => {});
+    loadStationFocus();
   }, []);
+
+  async function loadStationFocus() {
+    setFocusLoading(true);
+    try {
+      const data = await suggestionsApi.stationFocus();
+      setStationFocus(data);
+    } catch {
+      // silently ignore if AI unavailable
+    } finally {
+      setFocusLoading(false);
+    }
+  }
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   async function handleProfileSave() {
     setProfileSaving(true);
     try {
-      const age = profile.age ? parseInt(profile.age) : undefined;
-      await profileApi.update({ gender: profile.gender || null, age: age || null });
+      await profileApi.update({
+        gender: profile.gender || null,
+        birthday: profile.birthday || null,
+        trainingPatterns: profile.trainingPatterns || null,
+      });
       toast({ title: 'Profile saved' });
     } catch {
       toast({ title: 'Error', description: 'Could not save profile.', variant: 'destructive' });
@@ -94,20 +134,76 @@ export default function SuggestionTool() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Age</Label>
+              <Label>Date of birth</Label>
               <Input
-                type="number"
-                min={10}
-                max={100}
-                placeholder="e.g. 34"
-                value={profile.age}
-                onChange={e => setProfile(p => ({ ...p, age: e.target.value }))}
+                type="date"
+                value={profile.birthday}
+                onChange={e => setProfile(p => ({ ...p, birthday: e.target.value }))}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Training patterns & preferences <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <textarea
+              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              placeholder="e.g. On Mondays I wait for my daughter at sport and do running intervals. Every 2 weeks I like to run stairs. I prefer morning sessions. I dislike treadmills..."
+              value={profile.trainingPatterns}
+              onChange={e => setProfile(p => ({ ...p, trainingPatterns: e.target.value }))}
+            />
           </div>
           <Button onClick={handleProfileSave} disabled={profileSaving} variant="outline" size="sm">
             {profileSaving ? 'Saving…' : 'Save profile'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Station focus bars */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart2 className="h-4 w-4" />
+            Training Focus
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadStationFocus}
+            disabled={focusLoading}
+            className="gap-1 text-xs h-7 px-2 text-muted-foreground"
+          >
+            <RefreshCw className={`h-3 w-3 ${focusLoading ? 'animate-spin' : ''}`} />
+            {focusLoading ? 'Analysing…' : 'Refresh'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {focusLoading && !stationFocus && (
+            <p className="text-xs text-muted-foreground">Analysing your training data…</p>
+          )}
+          {!focusLoading && !stationFocus && (
+            <p className="text-xs text-muted-foreground">No analysis yet. Add some sessions and objectives first, then hit Refresh.</p>
+          )}
+          {stationFocus && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground mb-3">Score 0–10 · Higher = needs more focus</p>
+              {STATIONS.map(s => {
+                const score = stationFocus[s.key] ?? 0;
+                return (
+                  <div key={s.key} className="flex items-center gap-3">
+                    <span className="text-xs w-36 shrink-0">{s.label}</span>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${focusBarColor(score)}`}
+                        style={{ width: `${score * 10}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-bold w-6 text-right ${
+                      score >= 7 ? 'text-red-400' : score >= 4 ? 'text-yellow-400' : 'text-green-400'
+                    }`}>{score}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -179,8 +275,8 @@ export default function SuggestionTool() {
           <div className="space-y-1.5">
             <Label>Anything relevant today? <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <textarea
-              className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-              placeholder="e.g. My left knee is a bit sore, I only have the squat rack today, feeling tired from yesterday's long run, travelling so no sled available…"
+              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              placeholder="e.g. My left knee is a bit sore, only squat rack available today, feeling tired from yesterday's long run…"
               value={notes}
               onChange={e => setNotes(e.target.value)}
             />
