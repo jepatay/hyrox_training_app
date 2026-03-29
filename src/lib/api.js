@@ -44,6 +44,12 @@ export const api = {
   // Suggestions
   getSuggestion: (params) => request('POST', '/suggestions', params),
 
+  // Venues
+  getVenues: () => request('GET', '/venues'),
+  createVenue: (data) => request('POST', '/venues', data),
+  updateVenue: (id, data) => request('PUT', `/venues/${id}`, data),
+  deleteVenue: (id) => request('DELETE', `/venues/${id}`),
+
   // Coaching
   getCoachingFeedback: (sessionId) => request('GET', `/coaching/${sessionId}`),
 

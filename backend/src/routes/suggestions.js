@@ -6,13 +6,16 @@ const router = Router()
 
 router.post('/', async (req, res) => {
   try {
-    const { location, equipment, focus, time } = req.body
+    const { location, equipment, focus, time, venueId } = req.body
 
-    // Get recent sessions and upcoming objectives for context
-    const [sessionsSnap, objectivesSnap] = await Promise.all([
+    const fetches = [
       db.collection('training_sessions').orderBy('date', 'desc').limit(14).get(),
       db.collection('objectives').get(),
-    ])
+    ]
+    if (venueId) fetches.push(db.collection('venues').doc(venueId).get())
+
+    const results = await Promise.all(fetches)
+    const [sessionsSnap, objectivesSnap] = results
 
     const recentSessions = queryToArr(sessionsSnap)
     const objectives = queryToArr(objectivesSnap).filter(obj => {
@@ -20,9 +23,18 @@ router.post('/', async (req, res) => {
       return d >= new Date()
     }).sort((a, b) => new Date(a.date) - new Date(b.date))
 
+    // If a saved venue is selected, override equipment with the venue's setting
+    let resolvedEquipment = equipment
+    let venueName = null
+    if (venueId && results[2]?.exists) {
+      const venue = results[2].data()
+      resolvedEquipment = venue.equipment || equipment
+      venueName = venue.name || null
+    }
+
     const suggestion = generateTrainingSuggestion({
-      location, equipment, focus, time: parseInt(time),
-      recentSessions, objectives,
+      location, equipment: resolvedEquipment, focus, time: parseInt(time),
+      recentSessions, objectives, venueName,
     })
 
     res.json(suggestion)

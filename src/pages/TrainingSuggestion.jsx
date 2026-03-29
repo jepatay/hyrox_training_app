@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Zap, MapPin, Dumbbell, Clock, Target, CheckCircle, RotateCcw, Loader2 } from 'lucide-react'
 
-const LOCATIONS = [
+const STATIC_LOCATIONS = [
   { value: 'home', label: 'Home' },
   { value: 'gym', label: 'Gym' },
   { value: 'travel', label: 'Travel / Hotel' },
@@ -41,25 +41,50 @@ const TIME_OPTIONS = [
 export default function TrainingSuggestion() {
   const [params, setParams] = useState({
     location: 'gym', equipment: 'full_gym', focus: 'mixed', time: '60',
+    venueId: null,
   })
   const [suggestion, setSuggestion] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [objectives, setObjectives] = useState([])
+  const [venues, setVenues] = useState([])
 
   useEffect(() => {
     const now = new Date()
-    api.getObjectives()
-      .then(o => setObjectives(
-        (o || [])
+    Promise.all([
+      api.getObjectives().catch(() => []),
+      api.getVenues().catch(() => []),
+    ]).then(([objs, vens]) => {
+      setObjectives(
+        (objs || [])
           .filter(obj => new Date(obj.date) >= now)
           .sort((a, b) => new Date(a.date) - new Date(b.date))
           .slice(0, 2)
-      ))
-      .catch(() => {})
+      )
+      setVenues(vens || [])
+    })
   }, [])
 
   const set = (k, v) => setParams(p => ({ ...p, [k]: v }))
+
+  function handleLocationChange(value) {
+    // Check if it's a saved venue (prefixed with "venue:")
+    if (value.startsWith('venue:')) {
+      const venueId = value.slice(6)
+      const venue = venues.find(v => v.id === venueId)
+      setParams(p => ({
+        ...p,
+        location: 'outdoor',
+        venueId,
+        equipment: venue?.equipment || p.equipment,
+      }))
+    } else {
+      setParams(p => ({ ...p, location: value, venueId: null }))
+    }
+  }
+
+  // Compute the current select value
+  const locationSelectValue = params.venueId ? `venue:${params.venueId}` : params.location
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -77,6 +102,7 @@ export default function TrainingSuggestion() {
   const handleLogSession = async () => {
     if (!suggestion) return
     try {
+      const venueName = params.venueId ? venues.find(v => v.id === params.venueId)?.name : null
       await api.createTrainingSession({
         type: suggestion.sessionType || 'mixed',
         title: suggestion.title,
@@ -86,7 +112,7 @@ export default function TrainingSuggestion() {
         equipment: params.equipment,
         duration: params.time,
         exercises: suggestion.workout,
-        notes: `Generated suggestion. Focus: ${params.focus}`,
+        notes: `Generated suggestion. Focus: ${params.focus}${venueName ? `. Venue: ${venueName}` : ''}`,
       })
       alert('Session saved to Training Log!')
     } catch (e) {
@@ -132,11 +158,36 @@ export default function TrainingSuggestion() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Location</Label>
-              <Select value={params.location} onValueChange={v => set('location', v)}>
+              <Label className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Where are you training?</Label>
+              <Select value={locationSelectValue} onValueChange={handleLocationChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{LOCATIONS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {venues.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        My Venues
+                      </div>
+                      {venues.map(v => (
+                        <SelectItem key={v.id} value={`venue:${v.id}`}>
+                          {v.name}
+                        </SelectItem>
+                      ))}
+                      <div className="my-1 border-t border-border" />
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Generic
+                      </div>
+                    </>
+                  )}
+                  {STATIC_LOCATIONS.map(l => (
+                    <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
+              {params.venueId && (
+                <p className="text-xs text-primary">
+                  Equipment auto-set from venue profile.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5"><Dumbbell className="h-3 w-3" /> Equipment</Label>
@@ -193,24 +244,10 @@ export default function TrainingSuggestion() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {suggestion.warmup && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Warm-up</p>
-                <div className="bg-muted/50 rounded-lg p-3 text-sm whitespace-pre-line">{suggestion.warmup}</div>
-              </div>
-            )}
-
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Main Workout</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Workout</p>
               <div className="bg-muted/50 rounded-lg p-3 text-sm whitespace-pre-line">{suggestion.workout}</div>
             </div>
-
-            {suggestion.cooldown && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Cool-down</p>
-                <div className="bg-muted/50 rounded-lg p-3 text-sm whitespace-pre-line">{suggestion.cooldown}</div>
-              </div>
-            )}
 
             {suggestion.coachNote && (
               <>

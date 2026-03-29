@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Target, Dumbbell, Trophy, Zap, BarChart3, Menu, X, Activity
+  LayoutDashboard, Target, Dumbbell, Trophy, Zap, BarChart3, Menu, X, Activity, MapPin
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/training', label: 'Training Log', icon: Dumbbell },
   { to: '/records', label: 'Records', icon: Trophy },
   { to: '/suggest', label: 'Suggest Training', icon: Zap },
+  { to: '/venues', label: 'My Venues', icon: MapPin },
   { to: '/report', label: 'Monthly Report', icon: BarChart3 },
 ]
 

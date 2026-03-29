@@ -7,6 +7,7 @@ import recordsRoutes from './routes/records.js'
 import suggestionsRoutes from './routes/suggestions.js'
 import reportsRoutes from './routes/reports.js'
 import coachingRoutes from './routes/coaching.js'
+import venuesRoutes from './routes/venues.js'
 import { authMiddleware } from './middleware/auth.js'
 
 dotenv.config()
@@ -34,6 +35,7 @@ app.use('/api/records', recordsRoutes)
 app.use('/api/suggestions', suggestionsRoutes)
 app.use('/api/reports', reportsRoutes)
 app.use('/api/coaching', coachingRoutes)
+app.use('/api/venues', venuesRoutes)
 
 // 404 fallback
 app.use((req, res) => res.status(404).json({ error: 'Not found' }))

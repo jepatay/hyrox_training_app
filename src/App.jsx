@@ -7,6 +7,7 @@ import TrainingLog from './pages/TrainingLog'
 import PerformanceRecords from './pages/PerformanceRecords'
 import TrainingSuggestion from './pages/TrainingSuggestion'
 import MonthlyReport from './pages/MonthlyReport'
+import Venues from './pages/Venues'
 import Unauthorized from './pages/Unauthorized'
 
 function AppRoutes() {
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="/records" element={<PerformanceRecords />} />
         <Route path="/suggest" element={<TrainingSuggestion />} />
         <Route path="/report" element={<MonthlyReport />} />
+        <Route path="/venues" element={<Venues />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     </Layout>
