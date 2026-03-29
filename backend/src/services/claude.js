@@ -134,6 +134,20 @@ Output format — two sections only, no warmup, no cooldown (the athlete handles
   return chat(prompt, 600);
 }
 
+export async function refineSuggestion({ previousSuggestion, refinement }) {
+  const prompt = `You are an expert Hyrox and running coach. The athlete has a workout and wants a small change.
+
+Current workout:
+${previousSuggestion}
+
+Athlete's requested change:
+${refinement}
+
+Apply the change and return the updated workout. Keep the same format and conciseness. Only change what was asked — do not rewrite the whole session unless necessary.`;
+
+  return chat(prompt, 600);
+}
+
 export async function generateMonthlyReport({ sessions, objectives, month, year }) {
   const breakdown = sessions.reduce((acc, s) => {
     acc[s.type] = (acc[s.type] || 0) + 1;

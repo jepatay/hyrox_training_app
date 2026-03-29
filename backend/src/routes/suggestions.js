@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
-import { generateTrainingSuggestion, generateStationFocus } from '../services/claude.js';
+import { generateTrainingSuggestion, generateStationFocus, refineSuggestion } from '../services/claude.js';
 
 const router = Router();
 
@@ -45,6 +45,21 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate suggestion' });
+  }
+});
+
+// POST refine an existing suggestion
+router.post('/refine', async (req, res) => {
+  try {
+    const { previousSuggestion, refinement } = req.body;
+    if (!previousSuggestion || !refinement?.trim()) {
+      return res.status(400).json({ error: 'previousSuggestion and refinement are required' });
+    }
+    const suggestion = await refineSuggestion({ previousSuggestion, refinement: refinement.trim() });
+    res.json({ suggestion });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to refine suggestion' });
   }
 });
 

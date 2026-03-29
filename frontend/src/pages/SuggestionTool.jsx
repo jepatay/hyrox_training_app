@@ -43,6 +43,8 @@ export default function SuggestionTool() {
   const [suggestion, setSuggestion] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showSaveForm, setShowSaveForm] = useState(false);
+  const [refinement, setRefinement] = useState('');
+  const [refining, setRefining] = useState(false);
   const [venues, setVenues] = useState([]);
   const { toast } = useToast();
 
@@ -115,6 +117,7 @@ export default function SuggestionTool() {
     }
     setLoading(true);
     setSuggestion(null);
+    setRefinement('');
     try {
       const { suggestion: result } = await suggestionsApi.generate({ ...form, notes });
       setSuggestion(result);
@@ -122,6 +125,20 @@ export default function SuggestionTool() {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRefine() {
+    if (!refinement.trim() || !suggestion) return;
+    setRefining(true);
+    try {
+      const { suggestion: result } = await suggestionsApi.refine(suggestion, refinement);
+      setSuggestion(result);
+      setRefinement('');
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -340,22 +357,50 @@ export default function SuggestionTool() {
       </Card>
 
       {suggestion && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Your AI-Coached Workout
-            </CardTitle>
-            <Button onClick={() => setShowSaveForm(true)} variant="outline" size="sm" className="gap-2">
-              <Save className="h-4 w-4" /> Save as Planned Session
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="ai-content text-sm leading-relaxed whitespace-pre-wrap">
-              {suggestion}
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Your AI-Coached Workout
+              </CardTitle>
+              <Button onClick={() => setShowSaveForm(true)} variant="outline" size="sm" className="gap-2">
+                <Save className="h-4 w-4" /> Save as Planned Session
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="ai-content text-sm leading-relaxed whitespace-pre-wrap">
+                {suggestion}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Want to adjust this workout?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <textarea
+                className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                placeholder="e.g. Remove the lunges, make the intervals shorter, add one more set…"
+                value={refinement}
+                onChange={e => setRefinement(e.target.value)}
+              />
+              <Button
+                onClick={handleRefine}
+                disabled={refining || !refinement.trim()}
+                variant="outline"
+                className="gap-2"
+              >
+                {refining ? (
+                  <><div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> Applying…</>
+                ) : (
+                  <><Sparkles className="h-3.5 w-3.5" /> Apply change</>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {showSaveForm && (

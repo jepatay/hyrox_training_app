@@ -71,6 +71,7 @@ export const coachingApi = {
 
 export const suggestionsApi = {
   generate: (data) => api.post('/api/suggestions', data),
+  refine: (previousSuggestion, refinement) => api.post('/api/suggestions/refine', { previousSuggestion, refinement }),
   getStationFocus: () => api.get('/api/suggestions/station-focus'),
   recalculateStationFocus: () => api.post('/api/suggestions/station-focus', {}),
 };
