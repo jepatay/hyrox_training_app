@@ -10,6 +10,7 @@ import suggestionsRouter from './routes/suggestions.js';
 import reportsRouter from './routes/reports.js';
 import coachingRouter from './routes/coaching.js';
 import profileRouter from './routes/profile.js';
+import venuesRouter from './routes/venues.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,6 +31,7 @@ app.use('/api/suggestions', suggestionsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/coaching', coachingRouter);
 app.use('/api/profile', profileRouter);
+app.use('/api/venues', venuesRouter);
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

@@ -83,3 +83,10 @@ export const profileApi = {
 export const reportsApi = {
   monthly: (month, year) => api.get(`/api/reports/monthly?month=${month}&year=${year}`),
 };
+
+export const venuesApi = {
+  list: () => api.get('/api/venues'),
+  create: (data) => api.post('/api/venues', data),
+  update: (id, data) => api.put(`/api/venues/${id}`, data),
+  delete: (id) => api.delete(`/api/venues/${id}`),
+};

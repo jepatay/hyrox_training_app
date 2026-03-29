@@ -23,6 +23,7 @@ export const collections = {
   sessions: () => getDb().collection('sessions'),
   records: () => getDb().collection('records'),
   profile: () => getDb().collection('profile'),
+  venues: () => getDb().collection('venues'),
 };
 
 export function toDate(ts) {

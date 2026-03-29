@@ -76,7 +76,7 @@ Give specific, actionable feedback on training balance and race preparation. Be 
   return chat(prompt, 400);
 }
 
-export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes }) {
+export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes }) {
   const recentSummary = recentSessions
     .slice(0, 5)
     .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
@@ -98,7 +98,13 @@ export async function generateTrainingSuggestion({ location, equipment, focus, t
     : '';
   const notesLine = notes?.trim() ? `\nAthlete notes for today: ${notes.trim()}` : '';
 
-  const prompt = `You are an expert Hyrox and running coach. Generate a complete, specific training session.
+  const venueBlock = venueName
+    ? `\nVenue: ${venueName}${venueNotes ? ` (${venueNotes})` : ''}\nIMPORTANT: This venue only allows equipment type "${equipment}". Do NOT suggest exercises requiring equipment not available at this venue.`
+    : '';
+
+  const equipmentNote = `STRICT RULE: Only suggest exercises compatible with equipment "${equipment}". If equipment is "running_only", only include running exercises — no strength work, no gym equipment, no bodyweight circuits.`;
+
+  const prompt = `You are an expert Hyrox and running coach. Generate a focused, concise training session.
 
 Athlete profile:
 - ${profileLine}${patternsLine}
@@ -107,7 +113,9 @@ Session context:
 - Location: ${location}
 - Equipment: ${equipment}
 - Focus: ${focus}
-- Time available: ${timeAvailable} minutes${notesLine}
+- Time available: ${timeAvailable} minutes${notesLine}${venueBlock}
+
+${equipmentNote}
 
 Recent training:
 ${recentSummary}
@@ -115,15 +123,15 @@ ${recentSummary}
 Upcoming objectives:
 ${objSummary}
 
-Create a structured workout with:
-1. **Warm-up** (5-10 min): specific exercises
-2. **Main workout**: detailed exercises with sets/reps/distances/rest periods
-3. **Cool-down** (5-10 min): specific stretches
-4. **Coach notes**: why this session is good for their goals (consider athlete profile and any notes provided)
+Output format — two sections only, no warmup, no cooldown (the athlete handles that themselves):
 
-Be specific with numbers. Use Hyrox-relevant exercises where appropriate (sled push/pull, SkiErg, burpee broad jumps, wall balls, sandbag lunges, etc.).`;
+**Workout** (use all available time for actual training):
+[Specific exercises with sets/reps/distances/rest. Be concise and direct. No filler.]
 
-  return chat(prompt, 1000);
+**Coach note** (1-2 sentences max):
+[Why this session matters for their goals.]`;
+
+  return chat(prompt, 600);
 }
 
 export async function generateMonthlyReport({ sessions, objectives, month, year }) {

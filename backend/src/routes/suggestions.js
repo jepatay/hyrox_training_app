@@ -7,24 +7,38 @@ const router = Router();
 // POST generate training suggestion
 router.post('/', async (req, res) => {
   try {
-    const { location, equipment, focus, timeAvailable, notes } = req.body;
+    const { location, equipment, focus, timeAvailable, notes, venueId } = req.body;
     if (!location || !equipment || !focus || !timeAvailable) {
       return res.status(400).json({ error: 'location, equipment, focus, timeAvailable required' });
     }
 
-    const [recentSnap, objSnap, profileDoc] = await Promise.all([
+    const fetches = [
       collections.sessions().orderBy('date', 'desc').limit(7).get(),
       collections.objectives().orderBy('date', 'asc').get(),
       collections.profile().doc('main').get(),
-    ]);
+    ];
+    if (venueId) fetches.push(collections.venues().doc(venueId).get());
+
+    const results = await Promise.all(fetches);
+    const [recentSnap, objSnap, profileDoc] = results;
 
     const recentSessions = recentSnap.docs.map(docToObj).filter(Boolean);
     const objectives = objSnap.docs.map(docToObj).filter(Boolean);
     const profile = profileDoc.exists ? profileDoc.data() : {};
 
+    let resolvedEquipment = equipment;
+    let venueName = null;
+    let venueNotes = null;
+    if (venueId && results[3]?.exists) {
+      const venue = results[3].data();
+      resolvedEquipment = venue.equipment || equipment;
+      venueName = venue.name || null;
+      venueNotes = venue.notes || null;
+    }
+
     const suggestion = await generateTrainingSuggestion({
-      location, equipment, focus, timeAvailable,
-      recentSessions, objectives, profile, notes,
+      location, equipment: resolvedEquipment, focus, timeAvailable,
+      recentSessions, objectives, profile, notes, venueName, venueNotes,
     });
 
     res.json({ suggestion });

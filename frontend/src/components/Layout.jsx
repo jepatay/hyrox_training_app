@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, Menu, X
+  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/records', label: 'Records', icon: Trophy },
   { path: '/report', label: 'Monthly Report', icon: BarChart3 },
   { path: '/suggest', label: 'Suggest Training', icon: Zap },
+  { path: '/venues', label: 'My Venues', icon: MapPin },
 ];
 
 export default function Layout({ children }) {

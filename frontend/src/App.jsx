@@ -9,6 +9,7 @@ import TrainingLog from '@/pages/TrainingLog';
 import Records from '@/pages/Records';
 import MonthlyReport from '@/pages/MonthlyReport';
 import SuggestionTool from '@/pages/SuggestionTool';
+import Venues from '@/pages/Venues';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -37,6 +38,7 @@ function AppContent() {
         <Route path="/records" element={<Records />} />
         <Route path="/report" element={<MonthlyReport />} />
         <Route path="/suggest" element={<SuggestionTool />} />
+        <Route path="/venues" element={<Venues />} />
       </Routes>
     </Layout>
   );

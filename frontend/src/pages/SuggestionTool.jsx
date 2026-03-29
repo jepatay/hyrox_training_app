@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { suggestionsApi, sessionsApi, profileApi } from '@/lib/api';
+import { suggestionsApi, profileApi, venuesApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ export default function SuggestionTool() {
     equipment: '',
     focus: '',
     timeAvailable: '',
+    venueId: null,
   });
   const [notes, setNotes] = useState('');
   const [profile, setProfile] = useState({ gender: '', birthday: '', trainingPatterns: '' });
@@ -42,6 +43,7 @@ export default function SuggestionTool() {
   const [suggestion, setSuggestion] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showSaveForm, setShowSaveForm] = useState(false);
+  const [venues, setVenues] = useState([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -52,10 +54,10 @@ export default function SuggestionTool() {
         trainingPatterns: data.trainingPatterns || '',
       });
     }).catch(() => {});
-    // Load cached analysis — no AI call, just reads from Firestore
     suggestionsApi.getStationFocus().then(data => {
       if (data) setStationFocus(data);
     }).catch(() => {});
+    venuesApi.list().then(data => setVenues(data || [])).catch(() => {});
   }, []);
 
   async function recalculateStationFocus() {
@@ -72,6 +74,23 @@ export default function SuggestionTool() {
   }
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  function handleLocationChange(value) {
+    if (value.startsWith('venue:')) {
+      const venueId = value.slice(6);
+      const venue = venues.find(v => v.id === venueId);
+      setForm(prev => ({
+        ...prev,
+        location: 'outdoor',
+        venueId,
+        equipment: venue?.equipment || prev.equipment,
+      }));
+    } else {
+      setForm(prev => ({ ...prev, location: value, venueId: null }));
+    }
+  }
+
+  const locationSelectValue = form.venueId ? `venue:${form.venueId}` : form.location;
 
   async function handleProfileSave() {
     setProfileSaving(true);
@@ -225,9 +244,19 @@ export default function SuggestionTool() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Where are you training?</Label>
-              <Select value={form.location} onValueChange={v => set('location', v)}>
+              <Select value={locationSelectValue} onValueChange={handleLocationChange}>
                 <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
                 <SelectContent>
+                  {venues.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">My Venues</div>
+                      {venues.map(v => (
+                        <SelectItem key={v.id} value={`venue:${v.id}`}>{v.name}</SelectItem>
+                      ))}
+                      <div className="my-1 border-t border-border" />
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Generic</div>
+                    </>
+                  )}
                   <SelectItem value="club_gym">Club Gym (full Hyrox setup)</SelectItem>
                   <SelectItem value="regular_gym">Regular Gym</SelectItem>
                   <SelectItem value="home">Home</SelectItem>
@@ -236,6 +265,9 @@ export default function SuggestionTool() {
                   <SelectItem value="track">Running Track</SelectItem>
                 </SelectContent>
               </Select>
+              {form.venueId && (
+                <p className="text-xs text-primary">Equipment auto-set from venue profile.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Equipment available</Label>
