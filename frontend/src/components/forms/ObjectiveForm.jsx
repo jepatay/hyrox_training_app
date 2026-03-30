@@ -17,10 +17,10 @@ const HYROX_DIVISIONS = [
 ];
 
 const DIVISION_WEIGHTS = {
-  open_men:   { sledPush: '102 kg', sledPull: '78 kg',  farmersCarry: '2 × 24 kg', walkingLunges: '2 × 10 kg',  wallBall: '4 kg / 10 ft' },
-  open_women: { sledPush: '72 kg',  sledPull: '52 kg',  farmersCarry: '2 × 16 kg', walkingLunges: '2 × 7.5 kg', wallBall: '3 kg / 9 ft'  },
-  pro_men:    { sledPush: '152 kg', sledPull: '102 kg', farmersCarry: '2 × 32 kg', walkingLunges: '2 × 20 kg',  wallBall: '6 kg / 10 ft' },
-  pro_women:  { sledPush: '102 kg', sledPull: '78 kg',  farmersCarry: '2 × 24 kg', walkingLunges: '2 × 10 kg',  wallBall: '4 kg / 10 ft' },
+  open_men:   { sledPush: '152 kg', sledPull: '103 kg', farmersCarry: '2 × 24 kg', walkingLunges: '20 kg',  wallBall: '6 kg / 10 ft' },
+  open_women: { sledPush: '102 kg', sledPull: '78 kg',  farmersCarry: '2 × 16 kg', walkingLunges: '10 kg',  wallBall: '4 kg / 9 ft'  },
+  pro_men:    { sledPush: '202 kg', sledPull: '153 kg', farmersCarry: '2 × 32 kg', walkingLunges: '30 kg',  wallBall: '9 kg / 10 ft' },
+  pro_women:  { sledPush: '152 kg', sledPull: '103 kg', farmersCarry: '2 × 24 kg', walkingLunges: '20 kg',  wallBall: '6 kg / 9 ft'  },
 };
 
 const STATIONS = [

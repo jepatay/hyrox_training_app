@@ -32,10 +32,10 @@ async function chatJson(prompt, maxTokens = 600) {
 }
 
 const HYROX_WEIGHTS = {
-  open_men:   { sledPush: '102kg', sledPull: '78kg',  farmersCarry: '2×24kg', walkingLunges: '2×10kg',  wallBall: '4kg ball / 10ft' },
-  open_women: { sledPush: '72kg',  sledPull: '52kg',  farmersCarry: '2×16kg', walkingLunges: '2×7.5kg', wallBall: '3kg ball / 9ft'  },
-  pro_men:    { sledPush: '152kg', sledPull: '102kg', farmersCarry: '2×32kg', walkingLunges: '2×20kg',  wallBall: '6kg ball / 10ft' },
-  pro_women:  { sledPush: '102kg', sledPull: '78kg',  farmersCarry: '2×24kg', walkingLunges: '2×10kg',  wallBall: '4kg ball / 10ft' },
+  open_men:   { sledPush: '152kg', sledPull: '103kg', farmersCarry: '2×24kg', walkingLunges: '20kg',  wallBall: '6kg / 10ft' },
+  open_women: { sledPush: '102kg', sledPull: '78kg',  farmersCarry: '2×16kg', walkingLunges: '10kg',  wallBall: '4kg / 9ft'  },
+  pro_men:    { sledPush: '202kg', sledPull: '153kg', farmersCarry: '2×32kg', walkingLunges: '30kg',  wallBall: '9kg / 10ft' },
+  pro_women:  { sledPush: '152kg', sledPull: '103kg', farmersCarry: '2×24kg', walkingLunges: '20kg',  wallBall: '6kg / 9ft'  },
 };
 
 function ageFromBirthday(birthday) {
