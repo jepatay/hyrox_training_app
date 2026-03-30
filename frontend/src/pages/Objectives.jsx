@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2, Target, Clock, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import ObjectiveForm from '@/components/forms/ObjectiveForm';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 const STATION_LABELS = {
   run: 'Run', skiErg: 'SkiErg', sledPush: 'Sled Push', sledPull: 'Sled Pull',
@@ -205,40 +206,95 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
 
             {obj.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{obj.notes}</p>}
 
-            {/* Readiness summary + expand toggle */}
+            {/* Readiness summary + detail */}
             {readiness && (
-              <div className="mt-2">
+              <div className="mt-2 space-y-2">
                 {readiness.summary && (
                   <p className="text-xs text-muted-foreground">{readiness.summary}</p>
                 )}
-                {readiness.focusAreas?.length > 0 && (
-                  <button
-                    onClick={() => setExpanded(v => !v)}
-                    className="flex items-center gap-1 text-xs text-primary mt-1 hover:underline"
-                  >
-                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                    {expanded ? 'Hide focus areas' : 'Show focus areas'}
-                  </button>
+
+                {/* Estimated current performance — running objectives */}
+                {readiness.estimatedPerformance && (
+                  <p className="text-xs font-medium text-primary">
+                    📍 Current form estimate: {readiness.estimatedPerformance}
+                  </p>
                 )}
-                {expanded && readiness.focusAreas?.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {readiness.focusAreas.map(area => (
-                      <div key={area.key} className="space-y-0.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-medium">{STATION_LABELS[area.key] || area.label}</span>
-                          <span className={`font-bold ${area.score >= 7 ? 'text-red-400' : area.score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
-                            {area.score}/10
-                          </span>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${focusColor(area.score)}`}
-                            style={{ width: `${area.score * 10}%` }}
-                          />
-                        </div>
-                        {area.note && <p className="text-xs text-muted-foreground">{area.note}</p>}
+
+                {/* Radar chart — HYROX objectives */}
+                {readiness.radarData?.length > 0 && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setExpanded(v => !v)}
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      {expanded ? 'Hide readiness chart' : 'Show readiness chart'}
+                    </button>
+                    {expanded && (
+                      <div className="mt-3">
+                        <p className="text-xs text-muted-foreground mb-1">Outer = ready · Inner = needs work</p>
+                        <ResponsiveContainer width="100%" height={340}>
+                          <RadarChart data={readiness.radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                            <PolarGrid stroke="#374151" />
+                            <PolarAngleAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                            <PolarRadiusAxis domain={[0, 10]} tick={false} axisLine={false} />
+                            <Radar dataKey="readiness" stroke="#f97316" fill="#f97316" fillOpacity={0.2} strokeWidth={2} />
+                            <Tooltip
+                              formatter={(v) => [`${v}/10`, 'Readiness']}
+                              contentStyle={{ background: '#1f2937', border: '1px solid #374151', fontSize: 12 }}
+                            />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                        {/* Focus areas below chart */}
+                        {readiness.focusAreas?.length > 0 && (
+                          <div className="mt-3 space-y-1.5">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority focus areas</p>
+                            {readiness.focusAreas.slice(0, 4).map(area => (
+                              <div key={area.key} className="space-y-0.5">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-medium">{STATION_LABELS[area.key] || area.label}</span>
+                                  <span className={`font-bold ${area.score >= 7 ? 'text-red-400' : area.score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                    needs work
+                                  </span>
+                                </div>
+                                {area.note && <p className="text-xs text-muted-foreground">{area.note}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    )}
+                  </div>
+                )}
+
+                {/* Bar chart fallback — non-HYROX focus areas */}
+                {!readiness.radarData?.length && readiness.focusAreas?.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setExpanded(v => !v)}
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      {expanded ? 'Hide focus areas' : 'Show focus areas'}
+                    </button>
+                    {expanded && (
+                      <div className="mt-2 space-y-1.5">
+                        {readiness.focusAreas.map(area => (
+                          <div key={area.key} className="space-y-0.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-medium">{STATION_LABELS[area.key] || area.label}</span>
+                              <span className={`font-bold ${area.score >= 7 ? 'text-red-400' : area.score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                {area.score}/10
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div className={`h-full rounded-full ${focusColor(area.score)}`} style={{ width: `${area.score * 10}%` }} />
+                            </div>
+                            {area.note && <p className="text-xs text-muted-foreground">{area.note}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

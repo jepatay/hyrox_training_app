@@ -160,6 +160,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
                   <SelectItem value="full_gym">Full Gym</SelectItem>
                   <SelectItem value="limited">Limited</SelectItem>
                   <SelectItem value="running_only">Running Only</SelectItem>
+                  <SelectItem value="stairs">Stairs</SelectItem>
                   <SelectItem value="bodyweight">Bodyweight</SelectItem>
                 </SelectContent>
               </Select>

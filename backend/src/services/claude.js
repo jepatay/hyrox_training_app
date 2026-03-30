@@ -225,7 +225,7 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     : '?';
 
   const recentSummary = recentSessions.slice(0, 7)
-    .map(s => `- ${s.type} (${s.duration || '?'} min, RPE ${s.rpe || '?'}, ${s.date?.slice(0, 10) || '?'})`)
+    .map(s => `- ${s.type} (${s.duration || '?'} min, RPE ${s.rpe || '?'}, ${s.date?.slice(0, 10) || '?'}${s.notes ? `, notes: "${s.notes}"` : ''})`)
     .join('\n') || 'No recent sessions';
 
   const recordsSummary = records.slice(0, 6)
@@ -266,6 +266,16 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     ? 'Run, SkiErg, Sled Push, Sled Pull, Burpee Broad Jump, Row Erg, Farmers Carry, Walking Lunges, Wall Ball'
     : 'Speed/intervals, Endurance base, Lactate threshold, Strength';
 
+  const radarInstructions = isHyrox ? `
+Also return "radarData": an array of 17 objects showing readiness (0-10, where 10 = fully ready, 0 = not at all ready) for:
+- "overall" (Overall Time)
+- "run1" through "run8" (each of the 8 x 1km running segments — account for cumulative fatigue: later runs should generally score lower unless the athlete has strong endurance)
+- "skiErg", "sledPush", "sledPull", "burpeeBroadJump", "rowErg", "farmersCarry", "walkingLunges", "wallBall" (each station)
+Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
+
+  const estimatedPerfInstruction = !isHyrox ? `
+Also return "estimatedPerformance": a short string estimating the athlete's current realistic performance range for this race type based on their training and records (e.g. "~19:45–20:30 for 5K today"). Be honest and specific. If insufficient data, make a conservative estimate and say so.` : '';
+
   const prompt = `You are an expert Hyrox and running coach. Analyze this athlete's readiness for their upcoming race goal and return a JSON response.
 
 Athlete: ${profileLine}
@@ -273,7 +283,7 @@ Athlete: ${profileLine}
 Objective:
 ${objectiveDetail}${stationInfo}
 
-Recent training (last 7 sessions):
+Recent training (last 7 sessions — read the notes carefully, they contain important context):
 ${recentSummary}
 
 Past race records/PRs:
@@ -283,14 +293,17 @@ Return a JSON object exactly like this:
 {
   "score": <integer 0-10, where 10 = fully ready today>,
   "summary": "<2-3 sentence analysis of overall readiness and key points>",
+  "estimatedPerformance": <string or null>,
   "focusAreas": [
     { "key": "<key>", "label": "<label>", "score": <0-10 focus needed, 10=urgent>, "note": "<one sentence tip>" },
     ...
-  ]
+  ],
+  "radarData": <array or null>
 }
 
 The focusAreas keys and labels should be: ${stationFocusKeys} / ${stationFocusLabels}
-Order by score descending (most urgent first). Be honest and specific.`;
+Order focusAreas by score descending (most urgent first).${radarInstructions}${estimatedPerfInstruction}
+Be honest and specific.`;
 
   const result = await chatJson(prompt, 800);
   if (!result) return null;
