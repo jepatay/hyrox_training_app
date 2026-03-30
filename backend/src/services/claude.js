@@ -76,7 +76,7 @@ Give specific, actionable feedback on training balance and race preparation. Be 
   return chat(prompt, 400);
 }
 
-export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes }) {
+export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes, records }) {
   const recentSummary = recentSessions
     .slice(0, 5)
     .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
@@ -84,8 +84,17 @@ export async function generateTrainingSuggestion({ location, equipment, focus, t
 
   const objSummary = objectives
     .slice(0, 3)
-    .map(o => `- ${o.name} [${o.priority}] on ${o.date?.slice(0, 10) || '?'}`)
+    .map(o => {
+      let line = `- ${o.name} [${o.priority}] on ${o.date?.slice(0, 10) || '?'}`;
+      if (o.targetTime) line += ` — target: ${o.targetTime}`;
+      return line;
+    })
     .join('\n') || 'No objectives set';
+
+  const recordsSummary = (records || [])
+    .slice(0, 5)
+    .map(r => `- ${r.type}: ${r.totalTime || r.time || '?'} on ${r.date?.slice(0, 10) || '?'}`)
+    .join('\n') || 'No records';
 
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
@@ -120,18 +129,29 @@ ${equipmentNote}
 Recent training:
 ${recentSummary}
 
+Performance records (use these to calibrate paces):
+${recordsSummary}
+
 Upcoming objectives:
 ${objSummary}
 
-Output format — two sections only, no warmup, no cooldown (the athlete handles that themselves):
+PACE RULES — mandatory for all running:
+- Always specify target pace in min/km (metric).
+- Always convert each interval/segment to an approximate time in parentheses.
+  Example: "400m @ 4:30/km (≈ 1:48)" or "1km @ 5:00/km (≈ 5:00)".
+- Calibrate paces to the athlete's level using their records and target times above.
+  If no records exist, use reasonable recreational runner estimates and say so.
+- Give a pace range when appropriate (e.g. "4:20–4:30/km").
 
-**Workout** (use all available time for actual training):
-[Specific exercises with sets/reps/distances/rest. Be concise and direct. No filler.]
+Output format — two sections only, no warmup, no cooldown:
+
+**Workout**:
+[Intervals/distances with exact paces in min/km and time equivalent in brackets. Rest periods in seconds or minutes. Be concise.]
 
 **Coach note** (1-2 sentences max):
-[Why this session matters for their goals.]`;
+[Why this session and these paces suit their current level and goals.]`;
 
-  return chat(prompt, 600);
+  return chat(prompt, 700);
 }
 
 export async function refineSuggestion({ previousSuggestion, refinement }) {

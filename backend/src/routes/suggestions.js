@@ -16,21 +16,23 @@ router.post('/', async (req, res) => {
       collections.sessions().orderBy('date', 'desc').limit(7).get(),
       collections.objectives().orderBy('date', 'asc').get(),
       collections.profile().doc('main').get(),
+      collections.records().orderBy('date', 'desc').limit(5).get(),
     ];
     if (venueId) fetches.push(collections.venues().doc(venueId).get());
 
     const results = await Promise.all(fetches);
-    const [recentSnap, objSnap, profileDoc] = results;
+    const [recentSnap, objSnap, profileDoc, recordsSnap] = results;
 
     const recentSessions = recentSnap.docs.map(docToObj).filter(Boolean);
     const objectives = objSnap.docs.map(docToObj).filter(Boolean);
     const profile = profileDoc.exists ? profileDoc.data() : {};
+    const records = recordsSnap.docs.map(docToObj).filter(Boolean);
 
     let resolvedEquipment = equipment;
     let venueName = null;
     let venueNotes = null;
-    if (venueId && results[3]?.exists) {
-      const venue = results[3].data();
+    if (venueId && results[4]?.exists) {
+      const venue = results[4].data();
       resolvedEquipment = venue.equipment || equipment;
       venueName = venue.name || null;
       venueNotes = venue.notes || null;
@@ -38,7 +40,7 @@ router.post('/', async (req, res) => {
 
     const suggestion = await generateTrainingSuggestion({
       location, equipment: resolvedEquipment, focus, timeAvailable,
-      recentSessions, objectives, profile, notes, venueName, venueNotes,
+      recentSessions, objectives, profile, notes, venueName, venueNotes, records,
     });
 
     res.json({ suggestion });
