@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { sessionsApi, coachingApi } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { sessionsApi, coachingApi, venuesApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -23,19 +23,42 @@ export default function SessionForm({ session, onClose, onSaved }) {
     type: session?.type || '',
     status: session?.status || 'completed',
     location: session?.location || '',
+    venueId: session?.venueId || null,
     equipment: session?.equipment || '',
     duration: session?.duration || '',
     runningDistance: session?.runningDistance || '',
     rpe: session?.rpe || '',
-
     notes: session?.notes || '',
     exercises: session?.exercises || [],
   });
   const [saving, setSaving] = useState(false);
   const [generatingFeedback, setGeneratingFeedback] = useState(false);
+  const [venues, setVenues] = useState([]);
   const { toast } = useToast();
 
+  useEffect(() => {
+    venuesApi.list().then(data => setVenues(data || [])).catch(() => {});
+  }, []);
+
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  function handleLocationChange(value) {
+    if (value.startsWith('venue:')) {
+      const venueId = value.slice(6);
+      const venue = venues.find(v => v.id === venueId);
+      setForm(prev => ({
+        ...prev,
+        location: venue?.name || value,
+        venueId,
+        equipment: venue?.equipment || prev.equipment,
+      }));
+    } else {
+      setForm(prev => ({ ...prev, location: value, venueId: null }));
+    }
+  }
+
+  const locationSelectValue = form.venueId ? `venue:${form.venueId}` : form.location;
+  const selectedVenue = form.venueId ? venues.find(v => v.id === form.venueId) : null;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -141,9 +164,19 @@ export default function SessionForm({ session, onClose, onSaved }) {
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Location</Label>
-              <Select value={form.location} onValueChange={v => set('location', v)}>
+              <Select value={locationSelectValue} onValueChange={handleLocationChange}>
                 <SelectTrigger><SelectValue placeholder="Location" /></SelectTrigger>
                 <SelectContent>
+                  {venues.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">My Venues</div>
+                      {venues.map(v => (
+                        <SelectItem key={v.id} value={`venue:${v.id}`}>{v.name}</SelectItem>
+                      ))}
+                      <div className="my-1 border-t border-border" />
+                      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Generic</div>
+                    </>
+                  )}
                   <SelectItem value="club_gym">Club Gym</SelectItem>
                   <SelectItem value="home">Home</SelectItem>
                   <SelectItem value="travel">Travel</SelectItem>
@@ -151,6 +184,9 @@ export default function SessionForm({ session, onClose, onSaved }) {
                   <SelectItem value="outdoor">Outdoor</SelectItem>
                 </SelectContent>
               </Select>
+              {selectedVenue?.notes && (
+                <p className="text-xs text-muted-foreground">📍 {selectedVenue.notes}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Equipment</Label>

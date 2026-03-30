@@ -45,7 +45,7 @@ function ageFromBirthday(birthday) {
   return isNaN(age) ? null : age;
 }
 
-export async function generateCoachingFeedback({ session, recentSessions, objectives }) {
+export async function generateCoachingFeedback({ session, recentSessions, objectives, venueNotes }) {
   const recentSummary = recentSessions
     .slice(0, 7)
     .map(s => `- ${s.type} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'})`)
@@ -64,6 +64,7 @@ Session just completed:
 - RPE: ${session.rpe || '?'}/10
 - Feeling: ${session.feeling || 'not specified'}
 - Notes: ${session.notes || 'none'}
+- Venue notes: ${venueNotes || 'none'}
 
 Recent training (last 7 days):
 ${recentSummary}

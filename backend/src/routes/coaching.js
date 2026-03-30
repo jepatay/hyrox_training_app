@@ -23,7 +23,16 @@ router.post('/feedback', async (req, res) => {
     const recentSessions = recentSnap.docs.map(docToObj).filter(s => s && s.id !== sessionId);
     const objectives = objSnap.docs.map(docToObj).filter(Boolean);
 
-    const feedback = await generateCoachingFeedback({ session, recentSessions, objectives });
+    let venueNotes = null;
+    if (session.venueId) {
+      try {
+        const venueDoc = await collections.venues().doc(session.venueId).get();
+        const venue = docToObj(venueDoc);
+        if (venue?.notes) venueNotes = venue.notes;
+      } catch {}
+    }
+
+    const feedback = await generateCoachingFeedback({ session, recentSessions, objectives, venueNotes });
 
     // Save feedback to session
     await collections.sessions().doc(sessionId).update({
