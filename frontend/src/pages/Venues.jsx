@@ -10,6 +10,7 @@ import { MapPin, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 
 const EQUIPMENT_OPTIONS = [
   { value: 'running_only', label: 'Running Only' },
+  { value: 'stairs', label: 'Stairs Only' },
   { value: 'bodyweight', label: 'Bodyweight Only' },
   { value: 'limited', label: 'Limited Equipment' },
   { value: 'full_gym', label: 'Full Gym' },

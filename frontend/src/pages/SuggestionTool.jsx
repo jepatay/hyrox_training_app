@@ -295,6 +295,7 @@ export default function SuggestionTool() {
                   <SelectItem value="full_gym">Full gym (barbells, racks, machines)</SelectItem>
                   <SelectItem value="limited">Limited (dumbbells, kettlebells, bands)</SelectItem>
                   <SelectItem value="running_only">Running only</SelectItem>
+                  <SelectItem value="stairs">Stairs only</SelectItem>
                   <SelectItem value="bodyweight">Bodyweight only</SelectItem>
                 </SelectContent>
               </Select>

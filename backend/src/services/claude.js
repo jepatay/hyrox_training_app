@@ -108,10 +108,15 @@ export async function generateTrainingSuggestion({ location, equipment, focus, t
   const notesLine = notes?.trim() ? `\nAthlete notes for today: ${notes.trim()}` : '';
 
   const venueBlock = venueName
-    ? `\nVenue: ${venueName}${venueNotes ? ` (${venueNotes})` : ''}\nIMPORTANT: This venue only allows equipment type "${equipment}". Do NOT suggest exercises requiring equipment not available at this venue.`
+    ? `\nVenue: ${venueName}${venueNotes ? ` — ${venueNotes}` : ''}
+STRICT VENUE RULES:
+- Equipment available: "${equipment}" — do NOT suggest anything requiring other equipment.
+- If equipment is "stairs", the ONLY exercises allowed are stair-based (stair sprints, stair intervals, stair repeats). No flat running, no gym work.
+- If equipment is "running_only", only flat/trail running exercises. No stairs, no gym.
+- The athlete's training patterns may mention other venues (e.g. VSK, loops, tracks). IGNORE all location-specific details that refer to other venues. Only use details relevant to ${venueName}.`
     : '';
 
-  const equipmentNote = `STRICT RULE: Only suggest exercises compatible with equipment "${equipment}". If equipment is "running_only", only include running exercises — no strength work, no gym equipment, no bodyweight circuits.`;
+  const equipmentNote = venueName ? '' : `STRICT RULE: Only suggest exercises compatible with equipment "${equipment}". If equipment is "stairs", only stair-based exercises. If "running_only", only running — no strength, no gym, no stairs.`;
 
   const prompt = `You are an expert Hyrox and running coach. Generate a focused, concise training session.
 
