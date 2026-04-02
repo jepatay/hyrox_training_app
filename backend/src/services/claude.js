@@ -45,7 +45,7 @@ function ageFromBirthday(birthday) {
   return isNaN(age) ? null : age;
 }
 
-export async function generateCoachingFeedback({ session, recentSessions, objectives, venueNotes }) {
+export async function generateCoachingFeedback({ session, recentSessions, objectives, venueNotes, knowledge }) {
   const recentSummary = recentSessions
     .slice(0, 7)
     .map(s => `- ${s.type} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'})`)
@@ -56,7 +56,11 @@ export async function generateCoachingFeedback({ session, recentSessions, object
     .map(o => `- ${o.name} [${o.priority}] — ${o.type} on ${o.date?.slice(0, 10) || '?'}`)
     .join('\n') || 'No objectives set';
 
-  const prompt = `You are an expert Hyrox and running coach. Provide brief coaching feedback (3-4 sentences) based on this training data.
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    : '';
+
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. You know their full training history, their goals, and their personal approach to training. Give coaching feedback that feels like it comes from someone who truly knows them — not generic advice.
 
 Session just completed:
 - Type: ${session.type}
@@ -71,13 +75,16 @@ ${recentSummary}
 
 Upcoming objectives:
 ${objSummary}
+${knowledgeBlock}
 
-Give specific, actionable feedback on training balance and race preparation. Be direct and motivating.`;
+Also draw on current sports science and best practices for HYROX and endurance training to enrich your feedback.
 
-  return chat(prompt, 400);
+Give 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.`;
+
+  return chat(prompt, 450);
 }
 
-export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes, records }) {
+export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes, records, knowledge }) {
   const recentSummary = recentSessions
     .slice(0, 5)
     .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
@@ -119,7 +126,12 @@ STRICT VENUE RULES:
 
   const equipmentNote = venueName ? '' : `STRICT RULE: Only suggest exercises compatible with equipment "${equipment}". If equipment is "stairs", only stair-based exercises. If "running_only", only running — no strength, no gym, no stairs.`;
 
-  const prompt = `You are an expert Hyrox and running coach. Generate a focused, concise training session.
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nAthlete's personal knowledge base (their own technique notes, key sessions, best practices — use these to shape the workout):\n---\n${knowledge}\n---\n`
+    : '';
+
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. You know their training history, targets, and personal approach. Design a session that fits them specifically — not a generic plan.${knowledgeBlock}
+Also draw on current sports science and best practices for HYROX and endurance training where helpful.
 
 Athlete profile:
 - ${profileLine}${patternsLine}
@@ -214,7 +226,7 @@ Be specific and motivating.`;
   return chat(prompt, 800);
 }
 
-export async function generateReadinessAnalysis({ objective, recentSessions, records, profile }) {
+export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
     profile?.gender,
@@ -277,7 +289,11 @@ Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
   const estimatedPerfInstruction = !isHyrox ? `
 Also return "estimatedPerformance": a short string estimating the athlete's current realistic performance range for this race type based on their training and records (e.g. "~19:45–20:30 for 5K today"). Be honest and specific. If insufficient data, make a conservative estimate and say so.` : '';
 
-  const prompt = `You are an expert Hyrox and running coach. Analyze this athlete's readiness for their upcoming race goal and return a JSON response.
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nAthlete's personal knowledge base (their own coaching notes — use to calibrate your assessment):\n---\n${knowledge}\n---\n`
+    : '';
+
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyze their readiness for their upcoming goal and return a JSON response. Draw on their knowledge base, their records, their training patterns, and current sports science.${knowledgeBlock}
 
 Athlete: ${profileLine}
 

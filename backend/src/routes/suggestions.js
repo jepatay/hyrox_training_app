@@ -4,6 +4,46 @@ import { generateTrainingSuggestion, generateStationFocus, refineSuggestion } fr
 
 const router = Router();
 
+// Knowledge sections relevant per focus / equipment
+function knowledgeIdsForSuggestion(focus, equipment) {
+  const ids = ['race_strategy'];
+  const focusMap = {
+    running:       ['running', 'running__pace_zones', 'running__key_sessions'],
+    intervals:     ['running', 'running__pace_zones', 'running__key_sessions'],
+    tempo:         ['running', 'running__pace_zones'],
+    long_run:      ['running', 'running__key_sessions'],
+    skiErg:        ['hyrox__skierg'],
+    sled_push:     ['hyrox__sled_push'],
+    sled_pull:     ['hyrox__sled_pull'],
+    burpee:        ['hyrox__burpee_broad_jump'],
+    rowing:        ['hyrox__rowing'],
+    farmers_carry: ['hyrox__farmers_carry'],
+    lunges:        ['hyrox__sandbag_lunges'],
+    wall_balls:    ['hyrox__wall_balls'],
+    hyrox_full:    ['hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'],
+    strength:      ['strength_conditioning'],
+    recovery:      ['recovery_mobility'],
+  };
+  if (focus && focusMap[focus]) ids.push(...focusMap[focus]);
+
+  if (['stairs'].includes(equipment)) ids.push('running', 'hyrox__running');
+  if (['full_gym_hyrox'].includes(equipment)) ids.push(...(focusMap.hyrox_full));
+  if (['gym_strength', 'full_gym'].includes(equipment)) ids.push('strength_conditioning');
+
+  // Always include running notes since running is between all HYROX stations
+  if (!ids.includes('running')) ids.push('running');
+
+  return [...new Set(ids)];
+}
+
+async function fetchKnowledge(ids) {
+  const docs = await Promise.all(ids.map(id => collections.knowledge().doc(id).get()));
+  return docs
+    .filter(d => d.exists && d.data().content?.trim())
+    .map(d => `[${d.id}]\n${d.data().content.trim()}`)
+    .join('\n\n---\n\n');
+}
+
 // POST generate training suggestion
 router.post('/', async (req, res) => {
   try {
@@ -38,9 +78,12 @@ router.post('/', async (req, res) => {
       venueNotes = venue.notes || null;
     }
 
+    const knowledgeIds = knowledgeIdsForSuggestion(focus, resolvedEquipment);
+    const knowledge = await fetchKnowledge(knowledgeIds);
+
     const suggestion = await generateTrainingSuggestion({
       location, equipment: resolvedEquipment, focus, timeAvailable,
-      recentSessions, objectives, profile, notes, venueName, venueNotes, records,
+      recentSessions, objectives, profile, notes, venueName, venueNotes, records, knowledge,
     });
 
     res.json({ suggestion });

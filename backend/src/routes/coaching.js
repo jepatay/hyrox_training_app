@@ -5,6 +5,44 @@ import admin from 'firebase-admin';
 
 const router = Router();
 
+// Knowledge sections relevant per session type
+function knowledgeIdsForSession(type) {
+  const ids = ['race_strategy'];
+  switch (type) {
+    case 'running':
+      ids.push('running', 'running__pace_zones', 'running__key_sessions', 'running__race_prep');
+      break;
+    case 'stairs':
+      ids.push('running', 'hyrox__running');
+      break;
+    case 'hyrox_training':
+    case 'hyrox_race':
+      ids.push(
+        'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull',
+        'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry',
+        'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'
+      );
+      break;
+    case 'gym_strength':
+      ids.push('strength_conditioning');
+      break;
+    case 'recovery':
+      ids.push('recovery_mobility');
+      break;
+    default:
+      ids.push('running', 'strength_conditioning');
+  }
+  return [...new Set(ids)];
+}
+
+async function fetchKnowledge(ids) {
+  const docs = await Promise.all(ids.map(id => collections.knowledge().doc(id).get()));
+  return docs
+    .filter(d => d.exists && d.data().content?.trim())
+    .map(d => `[${d.id}]\n${d.data().content.trim()}`)
+    .join('\n\n---\n\n');
+}
+
 // POST generate coaching feedback for a session
 router.post('/feedback', async (req, res) => {
   try {
@@ -32,9 +70,11 @@ router.post('/feedback', async (req, res) => {
       } catch {}
     }
 
-    const feedback = await generateCoachingFeedback({ session, recentSessions, objectives, venueNotes });
+    const knowledgeIds = knowledgeIdsForSession(session.type);
+    const knowledge = await fetchKnowledge(knowledgeIds);
 
-    // Save feedback to session
+    const feedback = await generateCoachingFeedback({ session, recentSessions, objectives, venueNotes, knowledge });
+
     await collections.sessions().doc(sessionId).update({
       coachingFeedback: feedback,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
