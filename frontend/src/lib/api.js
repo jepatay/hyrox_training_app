@@ -1,7 +1,7 @@
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 function getToken() {
-  return sessionStorage.getItem('access_token') || '';
+  return localStorage.getItem('access_token') || '';
 }
 
 function headers() {
@@ -16,7 +16,7 @@ async function request(method, path, body) {
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(`${API_BASE}${path}`, opts);
   if (res.status === 401) {
-    sessionStorage.removeItem('access_token');
+    localStorage.removeItem('access_token');
     window.dispatchEvent(new Event('unauthorized'));
     throw new Error('Unauthorized');
   }

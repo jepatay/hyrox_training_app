@@ -9,10 +9,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenFromUrl = params.get('access');
-    const storedToken = sessionStorage.getItem('access_token');
+    const storedToken = localStorage.getItem('access_token');
 
     if (tokenFromUrl) {
-      sessionStorage.setItem('access_token', tokenFromUrl);
+      localStorage.setItem('access_token', tokenFromUrl);
       setIsAuthorized(true);
       // Remove token from URL for cleanliness
       params.delete('access');
