@@ -12,7 +12,7 @@ const STRAVA_TYPE_MAP = {
   VirtualRun: 'running',
   Walk: 'running',
   Hike: 'running',
-  Trail Run: 'running',
+  'Trail Run': 'running',
   WeightTraining: 'gym_strength',
   CrossFit: 'crossfit',
   Workout: 'hyrox_training',
