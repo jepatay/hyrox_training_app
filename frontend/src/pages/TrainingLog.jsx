@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { sessionsApi, coachingApi } from '@/lib/api';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { sessionsApi, coachingApi, stravaApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { formatDate, formatDuration, getSessionTypeConfig, SESSION_TYPES } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell, RefreshCw, Link2, Link2Off } from 'lucide-react';
 import SessionForm from '@/components/forms/SessionForm';
 import { parseMarkdown } from '@/lib/utils';
 
@@ -18,9 +19,33 @@ export default function TrainingLog() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [stravaStatus, setStravaStatus] = useState(null); // null=loading, { connected, athlete }
+  const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => { load(); }, [typeFilter, statusFilter]);
+
+  useEffect(() => {
+    stravaApi.getStatus()
+      .then(setStravaStatus)
+      .catch(() => setStravaStatus({ connected: false }));
+  }, []);
+
+  // Handle ?strava= param after OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const stravaParam = params.get('strava');
+    if (stravaParam === 'connected') {
+      toast({ title: 'Strava connected!', description: 'You can now sync your activities.' });
+      setStravaStatus(prev => ({ ...prev, connected: true }));
+      navigate('/training', { replace: true });
+    } else if (stravaParam === 'error') {
+      toast({ title: 'Strava connection failed', variant: 'destructive' });
+      navigate('/training', { replace: true });
+    }
+  }, [location.search]);
 
   async function load() {
     setLoading(true);
@@ -71,6 +96,42 @@ export default function TrainingLog() {
     toast({ title: 'Saved!', description: 'Session logged successfully.' });
   }
 
+  async function handleStravaConnect() {
+    try {
+      const { url } = await stravaApi.getAuthUrl();
+      window.location.href = url;
+    } catch {
+      toast({ title: 'Error', description: 'Could not reach Strava', variant: 'destructive' });
+    }
+  }
+
+  async function handleStravaSync() {
+    setSyncing(true);
+    try {
+      const { imported, total } = await stravaApi.sync();
+      toast({
+        title: `Synced ${imported} new ${imported === 1 ? 'activity' : 'activities'}`,
+        description: `${total - imported} already imported.`,
+      });
+      if (imported > 0) load();
+    } catch (err) {
+      toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleStravaDisconnect() {
+    if (!confirm('Disconnect Strava? Your synced sessions will remain.')) return;
+    try {
+      await stravaApi.disconnect();
+      setStravaStatus({ connected: false });
+      toast({ title: 'Strava disconnected' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to disconnect', variant: 'destructive' });
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
@@ -82,6 +143,58 @@ export default function TrainingLog() {
           <Plus className="h-4 w-4" /> Log Session
         </Button>
       </div>
+
+      {/* Strava banner */}
+      {stravaStatus && (
+        <Card className="border-orange-500/30 bg-orange-500/5">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-orange-500 font-bold text-sm tracking-wide">STRAVA</span>
+                {stravaStatus.connected ? (
+                  <span className="text-xs text-muted-foreground">
+                    Connected{stravaStatus.athlete ? ` · ${stravaStatus.athlete.name}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Not connected</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {stravaStatus.connected ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
+                      onClick={handleStravaSync}
+                      disabled={syncing}
+                    >
+                      <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
+                      {syncing ? 'Syncing...' : 'Sync activities'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs text-muted-foreground"
+                      onClick={handleStravaDisconnect}
+                    >
+                      <Link2Off className="h-3 w-3" /> Disconnect
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                    onClick={handleStravaConnect}
+                  >
+                    <Link2 className="h-3 w-3" /> Connect Strava
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="flex gap-3">
@@ -131,8 +244,13 @@ export default function TrainingLog() {
                     <span className="text-2xl">{typeConfig.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{typeConfig.label}</span>
+                        <span className="font-medium text-sm">{session.stravaActivityName || typeConfig.label}</span>
                         {session.status === 'planned' && <Badge variant="outline" className="text-xs">Planned</Badge>}
+                        {session.syncedFromStrava && (
+                          <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-400 gap-1">
+                            <span className="font-bold">S</span> Strava
+                          </Badge>
+                        )}
                         {session.coachingFeedback && (
                           <Badge className="text-xs gap-1"><Sparkles className="h-3 w-3" /> Feedback</Badge>
                         )}

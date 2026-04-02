@@ -91,3 +91,11 @@ export const venuesApi = {
   update: (id, data) => api.put(`/api/venues/${id}`, data),
   delete: (id) => api.delete(`/api/venues/${id}`),
 };
+
+export const stravaApi = {
+  getStatus: () => api.get('/api/strava/status'),
+  getAuthUrl: () => api.get('/api/strava/auth-url'),
+  exchange: (code) => api.post('/api/strava/exchange', { code }),
+  sync: () => api.post('/api/strava/sync', {}),
+  disconnect: () => api.delete('/api/strava/disconnect'),
+};
