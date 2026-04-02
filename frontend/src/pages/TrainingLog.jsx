@@ -28,9 +28,18 @@ export default function TrainingLog() {
   useEffect(() => { load(); }, [typeFilter, statusFilter]);
 
   useEffect(() => {
-    stravaApi.getStatus()
-      .then(setStravaStatus)
-      .catch(() => setStravaStatus({ connected: false }));
+    stravaApi.getStatus().then(status => {
+      setStravaStatus(status);
+      if (status.connected) {
+        const lastSync = status.lastSync ? new Date(status.lastSync) : null;
+        const hoursSince = lastSync ? (Date.now() - lastSync.getTime()) / 36e5 : Infinity;
+        if (hoursSince > 24) {
+          stravaApi.sync().then(({ imported }) => {
+            if (imported > 0) load();
+          }).catch(() => {});
+        }
+      }
+    }).catch(() => setStravaStatus({ connected: false }));
   }, []);
 
   // Handle ?strava= param after OAuth redirect
@@ -154,6 +163,7 @@ export default function TrainingLog() {
                 {stravaStatus.connected ? (
                   <span className="text-xs text-muted-foreground">
                     Connected{stravaStatus.athlete ? ` · ${stravaStatus.athlete.name}` : ''}
+                    {stravaStatus.lastSync ? ` · synced ${new Date(stravaStatus.lastSync).toLocaleDateString()}` : ''}
                   </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">Not connected</span>

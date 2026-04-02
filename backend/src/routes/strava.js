@@ -59,7 +59,8 @@ router.get('/status', async (_req, res) => {
     const profile = docToObj(doc);
     const tokens = profile?.stravaTokens;
     if (!tokens?.access_token) return res.json({ connected: false });
-    res.json({ connected: true, athlete: tokens.athlete || null });
+    const lastSync = profile?.lastStravaSync?.toDate?.()?.toISOString() || null;
+    res.json({ connected: true, athlete: tokens.athlete || null, lastSync });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to check Strava status' });
@@ -137,19 +138,26 @@ router.post('/sync', async (_req, res) => {
       return res.status(400).json({ error: 'Failed to fetch activities from Strava' });
     }
 
+    // Load all existing sessions for deduplication
+    const existingSnap = await collections.sessions().get();
+    const existingSessions = existingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
     // Deduplicate by stravaActivityId
-    const existingSnap = await collections.sessions()
-      .where('stravaActivityId', '!=', null)
-      .get();
-    const existingIds = new Set(
-      existingSnap.docs.map(d => d.data().stravaActivityId)
+    const existingStravaIds = new Set(
+      existingSessions.filter(s => s.stravaActivityId).map(s => s.stravaActivityId)
+    );
+    // Deduplicate by date+type (catches manually-logged sessions for same workout)
+    const existingDateType = new Set(
+      existingSessions.map(s => `${s.date}|${s.type}`)
     );
 
     let imported = 0;
     for (const act of activities) {
-      if (existingIds.has(act.id)) continue;
-
+      if (existingStravaIds.has(act.id)) continue;
       const type = STRAVA_TYPE_MAP[act.type] || 'running';
+      const date = (act.start_date_local || act.start_date || '').slice(0, 10);
+      if (existingDateType.has(`${date}|${type}`)) continue;
+
       const durationMin = Math.round((act.moving_time || 0) / 60);
       const distanceKm = act.distance
         ? parseFloat((act.distance / 1000).toFixed(2))
@@ -159,7 +167,7 @@ router.post('/sync', async (_req, res) => {
         stravaActivityId: act.id,
         stravaActivityName: act.name,
         syncedFromStrava: true,
-        date: (act.start_date_local || act.start_date || '').slice(0, 10),
+        date,
         type,
         status: 'completed',
         duration: durationMin,
@@ -172,6 +180,12 @@ router.post('/sync', async (_req, res) => {
       });
       imported++;
     }
+
+    // Record last sync time in profile
+    await collections.profile().doc('main').set(
+      { lastStravaSync: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
 
     res.json({ imported, total: activities.length });
   } catch (err) {
