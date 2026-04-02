@@ -12,6 +12,7 @@ import coachingRouter from './routes/coaching.js';
 import profileRouter from './routes/profile.js';
 import venuesRouter from './routes/venues.js';
 import stravaRouter from './routes/strava.js';
+import knowledgeRouter from './routes/knowledge.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,7 @@ app.use('/api/coaching', coachingRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/strava', stravaRouter);
+app.use('/api/knowledge', knowledgeRouter);
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

@@ -92,6 +92,11 @@ export const venuesApi = {
   delete: (id) => api.delete(`/api/venues/${id}`),
 };
 
+export const knowledgeApi = {
+  get: (id) => api.get(`/api/knowledge/${id}`),
+  save: (id, content) => api.put(`/api/knowledge/${id}`, { content }),
+};
+
 export const stravaApi = {
   getStatus: () => api.get('/api/strava/status'),
   getAuthUrl: () => api.get('/api/strava/auth-url'),

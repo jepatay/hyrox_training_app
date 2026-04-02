@@ -24,6 +24,7 @@ export const collections = {
   records: () => getDb().collection('records'),
   profile: () => getDb().collection('profile'),
   venues: () => getDb().collection('venues'),
+  knowledge: () => getDb().collection('knowledge'),
 };
 
 export function toDate(ts) {

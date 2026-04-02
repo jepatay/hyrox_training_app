@@ -11,6 +11,7 @@ import MonthlyReport from '@/pages/MonthlyReport';
 import SuggestionTool from '@/pages/SuggestionTool';
 import Venues from '@/pages/Venues';
 import StravaCallback from '@/pages/StravaCallback';
+import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -41,6 +42,7 @@ function AppContent() {
         <Route path="/suggest" element={<SuggestionTool />} />
         <Route path="/venues" element={<Venues />} />
         <Route path="/strava/callback" element={<StravaCallback />} />
+        <Route path="/knowledge" element={<KnowledgeLibrary />} />
       </Routes>
     </Layout>
   );
