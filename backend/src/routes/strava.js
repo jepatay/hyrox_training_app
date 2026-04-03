@@ -124,6 +124,65 @@ router.post('/exchange', async (req, res) => {
   }
 });
 
+function formatPace(speedMs) {
+  if (!speedMs || speedMs <= 0) return null;
+  const secPerKm = 1000 / speedMs;
+  const min = Math.floor(secPerKm / 60);
+  const sec = Math.round(secPerKm % 60);
+  return `${min}:${String(sec).padStart(2, '0')}/km`;
+}
+
+function buildNotes(act, detail) {
+  const lines = [];
+
+  // Avg pace
+  const avgPace = formatPace(detail?.average_speed || act.average_speed);
+  if (avgPace) lines.push(`Avg pace: ${avgPace}`);
+
+  // Elevation
+  if (detail?.total_elevation_gain) lines.push(`Elevation: +${Math.round(detail.total_elevation_gain)}m`);
+
+  // Heart rate
+  if (detail?.average_heartrate) {
+    const hr = `Avg HR: ${Math.round(detail.average_heartrate)} bpm`;
+    lines.push(detail.max_heartrate ? `${hr} (max ${Math.round(detail.max_heartrate)})` : hr);
+  }
+
+  // Per-km splits
+  const splits = detail?.splits_metric;
+  if (splits?.length > 1) {
+    lines.push('');
+    lines.push('Km splits:');
+    const pacesSec = splits.map(s => s.moving_time / Math.max(s.distance / 1000, 0.01));
+    splits.forEach((s, i) => {
+      const pSec = pacesSec[i];
+      const pMin = Math.floor(pSec / 60);
+      const pSc = Math.round(pSec % 60);
+      let row = `  km ${i + 1}: ${pMin}:${String(pSc).padStart(2, '0')}/km`;
+      if (s.average_heartrate) row += ` · ${Math.round(s.average_heartrate)} bpm`;
+      lines.push(row);
+    });
+
+    // Detect interval pattern: high std-dev in pace = likely intervals
+    const avg = pacesSec.reduce((a, b) => a + b, 0) / pacesSec.length;
+    const stdDev = Math.sqrt(pacesSec.reduce((s, p) => s + (p - avg) ** 2, 0) / pacesSec.length);
+    if (stdDev > 25) {
+      const fastKms = pacesSec.filter(p => p < avg - stdDev * 0.5).length;
+      const slowKms = pacesSec.filter(p => p > avg + stdDev * 0.5).length;
+      lines.push('');
+      lines.push(`⚡ Interval pattern detected: ~${fastKms} fast km${fastKms !== 1 ? 's' : ''}, ~${slowKms} recovery km${slowKms !== 1 ? 's' : ''}`);
+    }
+  }
+
+  // Original Strava description
+  if (act.description?.trim()) {
+    lines.push('');
+    lines.push(`Strava notes: ${act.description.trim()}`);
+  }
+
+  return lines.join('\n').trim();
+}
+
 // POST /api/strava/sync  — fetch last 30 activities and write to sessions
 router.post('/sync', async (_req, res) => {
   try {
@@ -168,6 +227,16 @@ router.post('/sync', async (_req, res) => {
         ? parseFloat((act.distance / 1000).toFixed(2))
         : null;
 
+      // Fetch detailed activity for splits, HR, elevation
+      let detail = null;
+      try {
+        const detailRes = await fetch(
+          `https://www.strava.com/api/v3/activities/${act.id}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        detail = await detailRes.json();
+      } catch {}
+
       await collections.sessions().add({
         stravaActivityId: act.id,
         stravaActivityName: act.name,
@@ -177,7 +246,7 @@ router.post('/sync', async (_req, res) => {
         status: 'completed',
         duration: durationMin,
         runningDistance: distanceKm,
-        notes: act.description || '',
+        notes: buildNotes(act, detail),
         location: act.location_city || '',
         rpe: null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),

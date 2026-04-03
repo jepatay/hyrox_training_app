@@ -68,11 +68,11 @@ export default function SessionForm({ session, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-      const data = {
+    const data = {
         ...form,
         duration: form.duration ? parseInt(form.duration) : null,
-        runningDistance: form.runningDistance ? parseFloat(form.runningDistance) : null,
-        rpe: form.rpe ? parseInt(form.rpe) : null,
+        runningDistance: form.runningDistance ? parseFloat(String(form.runningDistance).replace(',', '.')) : null,
+        rpe: form.rpe ? parseFloat(String(form.rpe).replace(',', '.')) : null,
       };
       let saved;
       if (session) {
@@ -210,7 +210,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
           {(form.type === 'running' || form.type === 'hyrox_training' || form.type === 'hyrox_competition') && (
             <div className="space-y-1.5">
               <Label>Running Distance (km)</Label>
-              <Input type="number" placeholder="5.0" step="0.1" min="0" value={form.runningDistance} onChange={e => set('runningDistance', e.target.value)} />
+              <Input type="number" placeholder="5.0" step="0.01" min="0" value={form.runningDistance} onChange={e => set('runningDistance', e.target.value)} />
             </div>
           )}
 
@@ -219,7 +219,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
               <p className="text-sm font-medium text-muted-foreground">Post-Session Feedback</p>
               <div className="space-y-1.5">
                 <Label>RPE (1–10)</Label>
-                <Input type="number" min="1" max="10" placeholder="7" value={form.rpe} onChange={e => set('rpe', e.target.value)} />
+                <Input type="number" min="1" max="10" step="0.5" placeholder="7" value={form.rpe} onChange={e => set('rpe', e.target.value)} />
               </div>
             </div>
           )}
