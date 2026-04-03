@@ -132,7 +132,12 @@ function formatPace(speedMs) {
   return `${min}:${String(sec).padStart(2, '0')}/km`;
 }
 
-function buildNotes(act, detail) {
+function paceSec(speedMs) {
+  if (!speedMs || speedMs <= 0) return null;
+  return 1000 / speedMs;
+}
+
+function buildNotes(act, detail, zones) {
   const lines = [];
 
   // Avg pace
@@ -148,29 +153,92 @@ function buildNotes(act, detail) {
     lines.push(detail.max_heartrate ? `${hr} (max ${Math.round(detail.max_heartrate)})` : hr);
   }
 
-  // Per-km splits
-  const splits = detail?.splits_metric;
-  if (splits?.length > 1) {
-    lines.push('');
-    lines.push('Km splits:');
-    const pacesSec = splits.map(s => s.moving_time / Math.max(s.distance / 1000, 0.01));
-    splits.forEach((s, i) => {
-      const pSec = pacesSec[i];
-      const pMin = Math.floor(pSec / 60);
-      const pSc = Math.round(pSec % 60);
-      let row = `  km ${i + 1}: ${pMin}:${String(pSc).padStart(2, '0')}/km`;
-      if (s.average_heartrate) row += ` · ${Math.round(s.average_heartrate)} bpm`;
-      lines.push(row);
-    });
+  // ── LAP DATA (highest resolution — beats km splits for short intervals) ──
+  const laps = detail?.laps;
+  if (laps?.length > 1) {
+    const avgLapDist = laps.reduce((s, l) => s + (l.distance || 0), 0) / laps.length;
+    const isShortInterval = avgLapDist < 900; // laps shorter than 900m = interval workout
 
-    // Detect interval pattern: high std-dev in pace = likely intervals
-    const avg = pacesSec.reduce((a, b) => a + b, 0) / pacesSec.length;
-    const stdDev = Math.sqrt(pacesSec.reduce((s, p) => s + (p - avg) ** 2, 0) / pacesSec.length);
-    if (stdDev > 25) {
-      const fastKms = pacesSec.filter(p => p < avg - stdDev * 0.5).length;
-      const slowKms = pacesSec.filter(p => p > avg + stdDev * 0.5).length;
+    if (isShortInterval) {
+      // Classify laps as fast vs recovery by pace
+      const lapPaces = laps.map(l => paceSec(l.average_speed));
+      const validPaces = lapPaces.filter(Boolean);
+      const medianPace = [...validPaces].sort((a, b) => a - b)[Math.floor(validPaces.length / 2)];
+
+      const fastLaps = laps.filter((l, i) => lapPaces[i] && lapPaces[i] < medianPace * 0.92);
+      const recoveryLaps = laps.filter((l, i) => lapPaces[i] && lapPaces[i] > medianPace * 1.08);
+
+      const avgFastPaceSec = fastLaps.length
+        ? fastLaps.reduce((s, l) => s + (paceSec(l.average_speed) || 0), 0) / fastLaps.length
+        : null;
+      const avgFastDist = fastLaps.length
+        ? Math.round(fastLaps.reduce((s, l) => s + (l.distance || 0), 0) / fastLaps.length)
+        : null;
+
       lines.push('');
-      lines.push(`⚡ Interval pattern detected: ~${fastKms} fast km${fastKms !== 1 ? 's' : ''}, ~${slowKms} recovery km${slowKms !== 1 ? 's' : ''}`);
+      lines.push(`⚡ Interval session — ${laps.length} laps (avg ${Math.round(avgLapDist)}m/lap)`);
+      if (fastLaps.length) {
+        const fMin = Math.floor(avgFastPaceSec / 60);
+        const fSec = Math.round(avgFastPaceSec % 60);
+        lines.push(`  Fast laps: ${fastLaps.length} × ~${avgFastDist}m @ avg ${fMin}:${String(fSec).padStart(2, '0')}/km`);
+      }
+      if (recoveryLaps.length) {
+        const rPace = recoveryLaps.reduce((s, l) => s + (paceSec(l.average_speed) || 0), 0) / recoveryLaps.length;
+        const rMin = Math.floor(rPace / 60);
+        const rSec = Math.round(rPace % 60);
+        const rDist = Math.round(recoveryLaps.reduce((s, l) => s + (l.distance || 0), 0) / recoveryLaps.length);
+        lines.push(`  Recovery laps: ${recoveryLaps.length} × ~${rDist}m @ avg ${rMin}:${String(rSec).padStart(2, '0')}/km`);
+      }
+
+      // Best lap
+      const bestLap = laps.reduce((best, l) => (!best || (l.average_speed || 0) > (best.average_speed || 0)) ? l : best, null);
+      if (bestLap) lines.push(`  Best lap: ${formatPace(bestLap.average_speed)} over ${Math.round(bestLap.distance)}m`);
+
+    } else {
+      // Long laps (e.g. circuit loops) — just list them
+      lines.push('');
+      lines.push('Laps:');
+      laps.forEach((l, i) => {
+        const p = formatPace(l.average_speed);
+        let row = `  Lap ${i + 1}: ${Math.round(l.distance)}m`;
+        if (p) row += ` @ ${p}`;
+        if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
+        lines.push(row);
+      });
+    }
+  } else {
+    // No laps — fall back to per-km splits
+    const splits = detail?.splits_metric;
+    if (splits?.length > 1) {
+      lines.push('');
+      lines.push('Km splits:');
+      const pacesSec = splits.map(s => s.moving_time / Math.max(s.distance / 1000, 0.01));
+      splits.forEach((s, i) => {
+        const pSec = pacesSec[i];
+        const pMin = Math.floor(pSec / 60);
+        const pSc = Math.round(pSec % 60);
+        let row = `  km ${i + 1}: ${pMin}:${String(pSc).padStart(2, '0')}/km`;
+        if (s.average_heartrate) row += ` · ${Math.round(s.average_heartrate)} bpm`;
+        lines.push(row);
+      });
+    }
+  }
+
+  // ── HEART RATE ZONES ──
+  if (zones?.heart_rate?.zones?.length) {
+    const zoneNames = ['Recovery', 'Aerobic', 'Tempo', 'Threshold', 'Anaerobic'];
+    const nonEmpty = zones.heart_rate.zones.filter(z => (z.time || 0) > 0);
+    if (nonEmpty.length) {
+      lines.push('');
+      lines.push('HR zones:');
+      nonEmpty.forEach((z, i) => {
+        const label = zoneNames[i] || `Zone ${i + 1}`;
+        const min = Math.floor(z.time / 60);
+        const sec = z.time % 60;
+        const pct = zones.heart_rate.zones.reduce((s, zz) => s + (zz.time || 0), 0);
+        const perc = pct > 0 ? Math.round((z.time / pct) * 100) : 0;
+        lines.push(`  ${label}: ${min}:${String(sec).padStart(2, '0')} (${perc}%)`);
+      });
     }
   }
 
@@ -227,14 +295,15 @@ router.post('/sync', async (_req, res) => {
         ? parseFloat((act.distance / 1000).toFixed(2))
         : null;
 
-      // Fetch detailed activity for splits, HR, elevation
-      let detail = null;
+      // Fetch detailed activity (laps, splits, HR) + HR zones in parallel
+      let detail = null, zones = null;
       try {
-        const detailRes = await fetch(
-          `https://www.strava.com/api/v3/activities/${act.id}`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        detail = await detailRes.json();
+        [detail, zones] = await Promise.all([
+          fetch(`https://www.strava.com/api/v3/activities/${act.id}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
+          fetch(`https://www.strava.com/api/v3/activities/${act.id}/zones`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
+        ]);
       } catch {}
 
       await collections.sessions().add({
@@ -246,7 +315,7 @@ router.post('/sync', async (_req, res) => {
         status: 'completed',
         duration: durationMin,
         runningDistance: distanceKm,
-        notes: buildNotes(act, detail),
+        notes: buildNotes(act, detail, zones),
         location: act.location_city || '',
         rpe: null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -286,12 +355,13 @@ router.post('/backfill-notes', async (_req, res) => {
     for (const doc of toUpdate) {
       const { stravaActivityId } = doc.data();
       try {
-        const detailRes = await fetch(
-          `https://www.strava.com/api/v3/activities/${stravaActivityId}`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        const detail = await detailRes.json();
-        const notes = buildNotes({ description: detail.description }, detail);
+        const [detail, zones] = await Promise.all([
+          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
+          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/zones`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
+        ]);
+        const notes = buildNotes({ description: detail.description }, detail, zones);
         if (notes.trim()) {
           await collections.sessions().doc(doc.id).update({
             notes,
