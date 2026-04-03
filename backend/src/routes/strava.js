@@ -337,7 +337,7 @@ router.post('/sync', async (_req, res) => {
   }
 });
 
-// POST /api/strava/backfill-notes  — enrich existing synced sessions that have no notes
+// POST /api/strava/backfill-notes  — re-enrich all synced sessions with latest lap/zone data
 router.post('/backfill-notes', async (_req, res) => {
   try {
     const accessToken = await getFreshToken();
@@ -346,10 +346,7 @@ router.post('/backfill-notes', async (_req, res) => {
       .where('syncedFromStrava', '==', true)
       .get();
 
-    const toUpdate = snap.docs.filter(d => {
-      const notes = d.data().notes || '';
-      return notes.trim() === '' && d.data().stravaActivityId;
-    });
+    const toUpdate = snap.docs.filter(d => d.data().stravaActivityId);
 
     let updated = 0;
     for (const doc of toUpdate) {
