@@ -89,6 +89,17 @@ router.put('/:id', async (req, res) => {
 // DELETE session
 router.delete('/:id', async (req, res) => {
   try {
+    const doc = await collections.sessions().doc(req.params.id).get();
+    if (doc.exists) {
+      const data = doc.data();
+      // If this was a Strava-synced session, add its activity ID to the blocklist
+      // so it never gets re-imported on future syncs
+      if (data.stravaActivityId) {
+        await collections.profile().doc('main').update({
+          stravaBlocklist: admin.firestore.FieldValue.arrayUnion(data.stravaActivityId),
+        });
+      }
+    }
     await collections.sessions().doc(req.params.id).delete();
     res.json({ success: true });
   } catch (err) {

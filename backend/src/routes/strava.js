@@ -138,6 +138,10 @@ router.post('/sync', async (_req, res) => {
       return res.status(400).json({ error: 'Failed to fetch activities from Strava' });
     }
 
+    // Load blocklist (activity IDs explicitly deleted by user — never reimport)
+    const profileDoc = await collections.profile().doc('main').get();
+    const blocklist = new Set(profileDoc.exists ? (profileDoc.data().stravaBlocklist || []) : []);
+
     // Load all existing sessions for deduplication
     const existingSnap = await collections.sessions().get();
     const existingSessions = existingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -153,6 +157,7 @@ router.post('/sync', async (_req, res) => {
 
     let imported = 0;
     for (const act of activities) {
+      if (blocklist.has(act.id)) continue;
       if (existingStravaIds.has(act.id)) continue;
       const type = STRAVA_TYPE_MAP[act.type] || 'running';
       const date = (act.start_date_local || act.start_date || '').slice(0, 10);
