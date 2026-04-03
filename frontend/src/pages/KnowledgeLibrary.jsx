@@ -46,6 +46,16 @@ const TREE = [
     children: [],
   },
   {
+    id: 'cycling',
+    label: 'Cycling',
+    icon: '🚴',
+    children: [
+      { id: 'cycling__base_endurance', label: 'Base Endurance' },
+      { id: 'cycling__cross_training', label: 'Cross-Training for Running' },
+      { id: 'cycling__intervals', label: 'Cycling Intervals' },
+    ],
+  },
+  {
     id: 'race_strategy',
     label: 'Race Strategy & Notes',
     icon: '🏅',

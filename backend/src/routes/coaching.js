@@ -26,6 +26,9 @@ function knowledgeIdsForSession(type) {
     case 'gym_strength':
       ids.push('strength_conditioning');
       break;
+    case 'cycling':
+      ids.push('cycling', 'cycling__base_endurance', 'cycling__cross_training', 'cycling__intervals');
+      break;
     case 'recovery':
       ids.push('recovery_mobility');
       break;

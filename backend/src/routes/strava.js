@@ -17,8 +17,10 @@ const STRAVA_TYPE_MAP = {
   CrossFit: 'crossfit',
   Workout: 'hyrox_training',
   StairStepper: 'stairs',
-  Ride: 'gym_strength',
-  VirtualRide: 'gym_strength',
+  Ride: 'cycling',
+  VirtualRide: 'cycling',
+  EBikeRide: 'cycling',
+  MountainBikeRide: 'cycling',
 };
 
 async function getFreshToken() {

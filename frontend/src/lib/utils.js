@@ -40,6 +40,7 @@ export const SESSION_TYPES = [
   { value: 'gym_strength', label: 'Gym Strength', color: '#8b5cf6', icon: '💪' },
   { value: 'crossfit', label: 'CrossFit Class', color: '#10b981', icon: '⚡' },
   { value: 'recovery', label: 'Recovery', color: '#6b7280', icon: '🧘' },
+  { value: 'cycling', label: 'Cycling', color: '#06b6d4', icon: '🚴' },
 ];
 
 export const OBJECTIVE_TYPES = [
