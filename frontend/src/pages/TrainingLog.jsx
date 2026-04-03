@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell, RefreshCw, Link2, Link2Off } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell, RefreshCw, Link2, Link2Off, FileText } from 'lucide-react';
 import SessionForm from '@/components/forms/SessionForm';
 import { parseMarkdown } from '@/lib/utils';
 
@@ -21,6 +21,7 @@ export default function TrainingLog() {
   const [expanded, setExpanded] = useState(null);
   const [stravaStatus, setStravaStatus] = useState(null); // null=loading, { connected, athlete }
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -130,6 +131,19 @@ export default function TrainingLog() {
     }
   }
 
+  async function handleBackfillNotes() {
+    setBackfilling(true);
+    try {
+      const { updated, total } = await stravaApi.backfillNotes();
+      toast({ title: `Updated ${updated} of ${total} sessions`, description: 'Notes enriched with pace, splits and HR.' });
+      if (updated > 0) load();
+    } catch (err) {
+      toast({ title: 'Backfill failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   async function handleStravaDisconnect() {
     if (!confirm('Disconnect Strava? Your synced sessions will remain.')) return;
     try {
@@ -181,6 +195,16 @@ export default function TrainingLog() {
                     >
                       <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
                       {syncing ? 'Syncing...' : 'Sync activities'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs text-muted-foreground"
+                      onClick={handleBackfillNotes}
+                      disabled={backfilling}
+                    >
+                      <FileText className={`h-3 w-3 ${backfilling ? 'animate-pulse' : ''}`} />
+                      {backfilling ? 'Updating...' : 'Fill missing notes'}
                     </Button>
                     <Button
                       size="sm"

@@ -102,5 +102,6 @@ export const stravaApi = {
   getAuthUrl: () => api.get('/api/strava/auth-url'),
   exchange: (code) => api.post('/api/strava/exchange', { code }),
   sync: () => api.post('/api/strava/sync', {}),
+  backfillNotes: () => api.post('/api/strava/backfill-notes', {}),
   disconnect: () => api.delete('/api/strava/disconnect'),
 };

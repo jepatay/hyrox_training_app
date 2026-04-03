@@ -268,6 +268,47 @@ router.post('/sync', async (_req, res) => {
   }
 });
 
+// POST /api/strava/backfill-notes  — enrich existing synced sessions that have no notes
+router.post('/backfill-notes', async (_req, res) => {
+  try {
+    const accessToken = await getFreshToken();
+
+    const snap = await collections.sessions()
+      .where('syncedFromStrava', '==', true)
+      .get();
+
+    const toUpdate = snap.docs.filter(d => {
+      const notes = d.data().notes || '';
+      return notes.trim() === '' && d.data().stravaActivityId;
+    });
+
+    let updated = 0;
+    for (const doc of toUpdate) {
+      const { stravaActivityId } = doc.data();
+      try {
+        const detailRes = await fetch(
+          `https://www.strava.com/api/v3/activities/${stravaActivityId}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const detail = await detailRes.json();
+        const notes = buildNotes({ description: detail.description }, detail);
+        if (notes.trim()) {
+          await collections.sessions().doc(doc.id).update({
+            notes,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          updated++;
+        }
+      } catch {}
+    }
+
+    res.json({ updated, total: toUpdate.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Backfill failed' });
+  }
+});
+
 // DELETE /api/strava/disconnect
 router.delete('/disconnect', async (_req, res) => {
   try {
