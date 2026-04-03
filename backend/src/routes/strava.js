@@ -153,58 +153,46 @@ function buildNotes(act, detail, zones) {
     lines.push(detail.max_heartrate ? `${hr} (max ${Math.round(detail.max_heartrate)})` : hr);
   }
 
-  // ── LAP DATA (highest resolution — beats km splits for short intervals) ──
+  // ── LAP DATA — every lap listed, then summary analysis ──
   const laps = detail?.laps;
   if (laps?.length > 1) {
-    const avgLapDist = laps.reduce((s, l) => s + (l.distance || 0), 0) / laps.length;
-    const isShortInterval = avgLapDist < 900; // laps shorter than 900m = interval workout
+    lines.push('');
+    lines.push('Laps:');
+    laps.forEach((l, i) => {
+      const p = formatPace(l.average_speed);
+      const dist = Math.round(l.distance || 0);
+      const elapsed = l.elapsed_time || 0;
+      const min = Math.floor(elapsed / 60);
+      const sec = elapsed % 60;
+      let row = `  Lap ${i + 1}: ${dist}m`;
+      if (p) row += ` @ ${p}`;
+      row += ` (${min}:${String(sec).padStart(2, '0')})`;
+      if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
+      lines.push(row);
+    });
 
-    if (isShortInterval) {
-      // Classify laps as fast vs recovery by pace
-      const lapPaces = laps.map(l => paceSec(l.average_speed));
-      const validPaces = lapPaces.filter(Boolean);
-      const medianPace = [...validPaces].sort((a, b) => a - b)[Math.floor(validPaces.length / 2)];
-
-      const fastLaps = laps.filter((l, i) => lapPaces[i] && lapPaces[i] < medianPace * 0.92);
-      const recoveryLaps = laps.filter((l, i) => lapPaces[i] && lapPaces[i] > medianPace * 1.08);
-
-      const avgFastPaceSec = fastLaps.length
-        ? fastLaps.reduce((s, l) => s + (paceSec(l.average_speed) || 0), 0) / fastLaps.length
-        : null;
-      const avgFastDist = fastLaps.length
-        ? Math.round(fastLaps.reduce((s, l) => s + (l.distance || 0), 0) / fastLaps.length)
-        : null;
+    // Analysis — ignore micro-laps under 50m (Strava transition artifacts)
+    const realLaps = laps.filter(l => (l.distance || 0) >= 50);
+    if (realLaps.length > 1) {
+      const sorted = [...realLaps].sort((a, b) => (a.average_speed || 0) - (b.average_speed || 0));
+      const medianPace = paceSec(sorted[Math.floor(sorted.length / 2)].average_speed);
+      const fastGroup = realLaps.filter(l => paceSec(l.average_speed) && paceSec(l.average_speed) < medianPace * 0.88);
+      const slowGroup = realLaps.filter(l => paceSec(l.average_speed) && paceSec(l.average_speed) >= medianPace * 0.88);
+      const bestLap = realLaps.reduce((b, l) => (!b || (l.average_speed || 0) > (b.average_speed || 0)) ? l : b, null);
 
       lines.push('');
-      lines.push(`⚡ Interval session — ${laps.length} laps (avg ${Math.round(avgLapDist)}m/lap)`);
-      if (fastLaps.length) {
-        const fMin = Math.floor(avgFastPaceSec / 60);
-        const fSec = Math.round(avgFastPaceSec % 60);
-        lines.push(`  Fast laps: ${fastLaps.length} × ~${avgFastDist}m @ avg ${fMin}:${String(fSec).padStart(2, '0')}/km`);
+      lines.push('Analysis:');
+      if (fastGroup.length && slowGroup.length) {
+        const avgFast = fastGroup.reduce((s, l) => s + paceSec(l.average_speed), 0) / fastGroup.length;
+        const avgSlow = slowGroup.reduce((s, l) => s + paceSec(l.average_speed), 0) / slowGroup.length;
+        const avgFastDist = Math.round(fastGroup.reduce((s, l) => s + (l.distance || 0), 0) / fastGroup.length);
+        const avgSlowDist = Math.round(slowGroup.reduce((s, l) => s + (l.distance || 0), 0) / slowGroup.length);
+        const fMin = Math.floor(avgFast / 60); const fSec = Math.round(avgFast % 60);
+        const sMin = Math.floor(avgSlow / 60); const sSec = Math.round(avgSlow % 60);
+        lines.push(`  ⚡ ${fastGroup.length} fast laps: ~${avgFastDist}m @ avg ${fMin}:${String(fSec).padStart(2, '0')}/km`);
+        lines.push(`  🔄 ${slowGroup.length} recovery laps: ~${avgSlowDist}m @ avg ${sMin}:${String(sSec).padStart(2, '0')}/km`);
       }
-      if (recoveryLaps.length) {
-        const rPace = recoveryLaps.reduce((s, l) => s + (paceSec(l.average_speed) || 0), 0) / recoveryLaps.length;
-        const rMin = Math.floor(rPace / 60);
-        const rSec = Math.round(rPace % 60);
-        const rDist = Math.round(recoveryLaps.reduce((s, l) => s + (l.distance || 0), 0) / recoveryLaps.length);
-        lines.push(`  Recovery laps: ${recoveryLaps.length} × ~${rDist}m @ avg ${rMin}:${String(rSec).padStart(2, '0')}/km`);
-      }
-
-      // Best lap
-      const bestLap = laps.reduce((best, l) => (!best || (l.average_speed || 0) > (best.average_speed || 0)) ? l : best, null);
       if (bestLap) lines.push(`  Best lap: ${formatPace(bestLap.average_speed)} over ${Math.round(bestLap.distance)}m`);
-
-    } else {
-      // Long laps (e.g. circuit loops) — just list them
-      lines.push('');
-      lines.push('Laps:');
-      laps.forEach((l, i) => {
-        const p = formatPace(l.average_speed);
-        let row = `  Lap ${i + 1}: ${Math.round(l.distance)}m`;
-        if (p) row += ` @ ${p}`;
-        if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
-        lines.push(row);
-      });
     }
   } else {
     // No laps — fall back to per-km splits
