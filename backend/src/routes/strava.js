@@ -271,13 +271,17 @@ router.post('/sync', async (_req, res) => {
     const existingSnap = await collections.sessions().get();
     const existingSessions = existingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Deduplicate by stravaActivityId
+    // Deduplicate by stravaActivityId (already imported)
     const existingStravaIds = new Set(
       existingSessions.filter(s => s.stravaActivityId).map(s => s.stravaActivityId)
     );
-    // Deduplicate by date+type (catches manually-logged sessions for same workout)
-    const existingDateType = new Set(
-      existingSessions.map(s => `${s.date}|${s.type}`)
+    // Deduplicate by date+type ONLY for manually logged sessions (no stravaActivityId)
+    // This prevents importing a Strava activity when the user already logged it manually
+    // but does NOT block a second Strava activity on the same day
+    const manualSessionDateType = new Set(
+      existingSessions
+        .filter(s => !s.stravaActivityId)
+        .map(s => `${s.date}|${s.type}`)
     );
 
     let imported = 0;
@@ -286,7 +290,7 @@ router.post('/sync', async (_req, res) => {
       if (existingStravaIds.has(act.id)) continue;
       const type = STRAVA_TYPE_MAP[act.type] || 'running';
       const date = (act.start_date_local || act.start_date || '').slice(0, 10);
-      if (existingDateType.has(`${date}|${type}`)) continue;
+      if (manualSessionDateType.has(`${date}|${type}`)) continue;
 
       const durationMin = Math.round((act.moving_time || 0) / 60);
       const distanceKm = act.distance
