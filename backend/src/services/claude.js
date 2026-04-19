@@ -60,15 +60,24 @@ export async function generateCoachingFeedback({ session, recentSessions, object
     ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
     : '';
 
+  const today = new Date().toISOString().slice(0, 10);
+  const sessionDate = session.date?.slice(0, 10) || today;
+  const daysAgo = Math.round((new Date(today) - new Date(sessionDate)) / (1000 * 60 * 60 * 24));
+  const whenLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+
   const prompt = `You are this athlete's dedicated personal HYROX and running coach. You know their full training history, their goals, and their personal approach to training. Give coaching feedback that feels like it comes from someone who truly knows them — not generic advice.
 
-Session just completed:
+Today's date: ${today}
+
+Session logged (${whenLabel} — ${sessionDate}):
 - Type: ${session.type}
 - Duration: ${session.duration || '?'} minutes
 - RPE: ${session.rpe || '?'}/10
 - Feeling: ${session.feeling || 'not specified'}
 - Notes: ${session.notes || 'none'}
 - Venue notes: ${venueNotes || 'none'}
+
+IMPORTANT: This session was on ${sessionDate} (${whenLabel}). Never say "today's session" if it was not today — reference it accurately as yesterday's, or 2 days ago, etc.
 
 Recent training (last 7 days):
 ${recentSummary}
