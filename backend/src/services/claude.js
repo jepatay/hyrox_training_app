@@ -28,7 +28,13 @@ async function chatJson(prompt, maxTokens = 600) {
     response_format: { type: 'json_object' },
     messages: [{ role: 'user', content: prompt }],
   });
-  return JSON.parse(completion.choices[0].message.content);
+  const raw = completion.choices[0].message.content;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error('chatJson: failed to parse JSON response', raw?.slice(0, 200));
+    return null;
+  }
 }
 
 const HYROX_WEIGHTS = {
@@ -321,17 +327,17 @@ Return a JSON object exactly like this:
   "summary": "<2-3 sentence analysis of overall readiness and key points>",
   "estimatedPerformance": <string or null>,
   "focusAreas": [
-    { "key": "<key>", "label": "<label>", "score": <0-10 focus needed, 10=urgent>, "note": "<one sentence tip>" },
+    { "key": "<key>", "label": "<label>", "score": <integer 0-10, where 10 = fully developed/ready, 0 = urgently needs work>, "note": "<one sentence actionable tip on what to do to improve>" },
     ...
   ],
   "radarData": <array or null>
 }
 
 The focusAreas keys and labels should be: ${stationFocusKeys} / ${stationFocusLabels}
-Order focusAreas by score descending (most urgent first).${radarInstructions}${estimatedPerfInstruction}
+Order focusAreas by score ascending (least ready first, so areas most needing attention come first).${radarInstructions}${estimatedPerfInstruction}
 Be honest and specific.`;
 
-  const result = await chatJson(prompt, 800);
+  const result = await chatJson(prompt, 1500);
   if (!result) return null;
   return { ...result, updatedAt: new Date().toISOString() };
 }

@@ -18,12 +18,12 @@ const STATION_LABELS = {
 };
 
 function focusColor(score) {
-  if (score >= 7) return 'bg-red-500';
+  if (score >= 7) return 'bg-green-500';
   if (score >= 4) return 'bg-yellow-400';
-  return 'bg-green-500';
+  return 'bg-red-500';
 }
 
-function scoreColor(score) {
+function scoreTextColor(score) {
   if (score >= 7) return 'text-green-400';
   if (score >= 4) return 'text-yellow-400';
   return 'text-red-400';
@@ -253,7 +253,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
                               <div key={area.key} className="space-y-0.5">
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="font-medium">{STATION_LABELS[area.key] || area.label}</span>
-                                  <span className={`font-bold ${area.score >= 7 ? 'text-red-400' : area.score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                  <span className={`font-bold ${scoreTextColor(area.score)}`}>
                                     needs work
                                   </span>
                                 </div>
@@ -283,7 +283,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
                           <div key={area.key} className="space-y-0.5">
                             <div className="flex items-center justify-between text-xs">
                               <span className="font-medium">{STATION_LABELS[area.key] || area.label}</span>
-                              <span className={`font-bold ${area.score >= 7 ? 'text-red-400' : area.score >= 4 ? 'text-yellow-400' : 'text-green-400'}`}>
+                              <span className={`font-bold ${scoreTextColor(area.score)}`}>
                                 {area.score}/10
                               </span>
                             </div>
