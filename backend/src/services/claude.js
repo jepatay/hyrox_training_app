@@ -252,8 +252,12 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     ? Math.round((new Date(objective.date) - Date.now()) / (1000 * 60 * 60 * 24))
     : '?';
 
-  const recentSummary = recentSessions.slice(0, 7)
-    .map(s => `- ${s.type} (${s.duration || '?'} min, RPE ${s.rpe || '?'}, ${s.date?.slice(0, 10) || '?'}${s.notes ? `, notes: "${s.notes}"` : ''})`)
+  const recentSummary = recentSessions.slice(0, 25)
+    .map(s => {
+      const header = `[${s.date?.slice(0, 10) || '?'}] ${s.type} — ${s.duration || '?'} min${s.rpe != null ? `, RPE ${s.rpe}` : ''}`;
+      const notes = s.notes?.trim() ? `  → ${s.notes.trim()}` : '';
+      return notes ? `${header}\n${notes}` : header;
+    })
     .join('\n') || 'No recent sessions';
 
   const recordsSummary = records.slice(0, 6)
@@ -305,39 +309,47 @@ Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
 Also return "estimatedPerformance": a short string estimating the athlete's current realistic performance range for this race type based on their training and records (e.g. "~19:45–20:30 for 5K today"). Be honest and specific. If insufficient data, make a conservative estimate and say so.` : '';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nAthlete's personal knowledge base (their own coaching notes — use to calibrate your assessment):\n---\n${knowledge}\n---\n`
+    ? `\nKnowledge base (coaching notes, sport science, technique guides — use these to interpret what each training session actually develops and how it maps to each focus area):\n---\n${knowledge}\n---\n`
     : '';
 
-  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyze their readiness for their upcoming goal and return a JSON response. Draw on their knowledge base, their records, their training patterns, and current sports science.${knowledgeBlock}
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}
 
 Athlete: ${profileLine}
 
 Objective:
 ${objectiveDetail}${stationInfo}
 
-Recent training (last 7 sessions — read the notes carefully, they contain important context):
+Recent training (up to last 25 sessions, most recent first):
 ${recentSummary}
 
 Past race records/PRs:
 ${recordsSummary}
 
+How to score focus areas:
+- Read every session note carefully. Notes describe what was actually trained: exercises, weights, distances, reps, paces, sets. This is your primary signal.
+- Use the knowledge base to understand what each activity develops. For example: heavy sled push builds posterior chain strength; 400m intervals at race pace build speed; tempo runs build threshold.
+- Cross-reference the training content against what the objective demands. A session note like "5x sled push 150kg" is far more informative than RPE alone.
+- RPE is secondary context (it tells you effort, not content). Do not weight it heavily.
+- Look across all provided sessions, not just the most recent few. Identify trends: what has been trained consistently? What has been neglected for weeks?
+- Use past records/PRs to calibrate baseline ability.
+
 Return a JSON object exactly like this:
 {
   "score": <integer 0-10, where 10 = fully ready today>,
-  "summary": "<2-3 sentence analysis of overall readiness and key points>",
+  "summary": "<2-3 sentence analysis grounded in specific training content observed>",
   "estimatedPerformance": <string or null>,
   "focusAreas": [
-    { "key": "<key>", "label": "<label>", "score": <integer 0-10, where 10 = fully developed/ready, 0 = urgently needs work>, "note": "<one sentence actionable tip on what to do to improve>" },
+    { "key": "<key>", "label": "<label>", "score": <integer 0-10, where 10 = fully developed/ready, 0 = urgently needs work>, "note": "<one concrete sentence: what to do and why, referencing the knowledge base if relevant>" },
     ...
   ],
   "radarData": <array or null>
 }
 
 The focusAreas keys and labels should be: ${stationFocusKeys} / ${stationFocusLabels}
-Order focusAreas by score ascending (least ready first, so areas most needing attention come first).${radarInstructions}${estimatedPerfInstruction}
+Order focusAreas by score ascending (least ready first).${radarInstructions}${estimatedPerfInstruction}
 Be honest and specific.`;
 
-  const result = await chatJson(prompt, 1500);
+  const result = await chatJson(prompt, 2000);
   if (!result) return null;
   return { ...result, updatedAt: new Date().toISOString() };
 }

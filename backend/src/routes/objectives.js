@@ -101,7 +101,7 @@ router.post('/:id/readiness', async (req, res) => {
     if (!objective) return res.status(404).json({ error: 'Not found' });
 
     const [recentSnap, recordsSnap, profileDoc] = await Promise.all([
-      collections.sessions().orderBy('date', 'desc').limit(10).get(),
+      collections.sessions().orderBy('date', 'desc').limit(30).get(),
       collections.records().orderBy('date', 'desc').limit(10).get(),
       collections.profile().doc('main').get(),
     ]);
