@@ -32,7 +32,10 @@ async function buildReadiness(objective) {
   const knowledgeDocs = await Promise.all(knowledgeIds.map(id => collections.knowledge().doc(id).get()));
   const knowledge = knowledgeDocs
     .filter(d => d.exists && d.data().content?.trim())
-    .map(d => `[${d.id}]\n${d.data().content.trim()}`)
+    .map(d => {
+      const content = d.data().content.trim();
+      return `[${d.id}]\n${content.slice(0, 800)}${content.length > 800 ? '…' : ''}`;
+    })
     .join('\n\n---\n\n');
 
   return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge });

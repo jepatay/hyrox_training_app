@@ -260,10 +260,11 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     ? Math.round((new Date(objective.date) - Date.now()) / (1000 * 60 * 60 * 24))
     : '?';
 
-  const recentSummary = recentSessions.slice(0, 25)
+  const recentSummary = recentSessions.slice(0, 20)
     .map(s => {
       const header = `[${s.date?.slice(0, 10) || '?'}] ${s.type} — ${s.duration || '?'} min${s.rpe != null ? `, RPE ${s.rpe}` : ''}`;
-      const notes = s.notes?.trim() ? `  → ${s.notes.trim()}` : '';
+      const rawNotes = s.notes?.trim();
+      const notes = rawNotes ? `  → ${rawNotes.slice(0, 300)}${rawNotes.length > 300 ? '…' : ''}` : '';
       return notes ? `${header}\n${notes}` : header;
     })
     .join('\n') || 'No recent sessions';
