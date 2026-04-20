@@ -306,6 +306,11 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
               <Button variant="ghost" size="icon" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
               <Button variant="ghost" size="icon" onClick={onDelete} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
             </div>
+            {readiness?.updatedAt && (
+              <span className="text-xs text-muted-foreground/60 text-right">
+                Updated {new Date(readiness.updatedAt).toLocaleDateString()}
+              </span>
+            )}
             <Button
               variant="ghost"
               size="sm"

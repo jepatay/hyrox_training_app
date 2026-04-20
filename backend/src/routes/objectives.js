@@ -4,13 +4,58 @@ import { generateReadinessAnalysis } from '../services/claude.js';
 import admin from 'firebase-admin';
 
 const router = Router();
+const READINESS_STALE_DAYS = 7;
 
-// GET all objectives
+function isReadinessStale(objective) {
+  if (!objective.readiness?.updatedAt) return true;
+  const updatedAt = new Date(objective.readiness.updatedAt);
+  const ageMs = Date.now() - updatedAt.getTime();
+  return ageMs > READINESS_STALE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+async function buildReadiness(objective) {
+  const isHyrox = objective.type === 'hyrox';
+
+  const [recentSnap, recordsSnap, profileDoc] = await Promise.all([
+    collections.sessions().orderBy('date', 'desc').limit(30).get(),
+    collections.records().orderBy('date', 'desc').limit(10).get(),
+    collections.profile().doc('main').get(),
+  ]);
+
+  const recentSessions = recentSnap.docs.map(docToObj).filter(Boolean);
+  const records = recordsSnap.docs.map(docToObj).filter(Boolean);
+  const profile = profileDoc.exists ? profileDoc.data() : {};
+
+  const knowledgeIds = isHyrox
+    ? ['race_strategy', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running', 'running']
+    : ['race_strategy', 'running', 'running__pace_zones', 'running__race_prep'];
+  const knowledgeDocs = await Promise.all(knowledgeIds.map(id => collections.knowledge().doc(id).get()));
+  const knowledge = knowledgeDocs
+    .filter(d => d.exists && d.data().content?.trim())
+    .map(d => `[${d.id}]\n${d.data().content.trim()}`)
+    .join('\n\n---\n\n');
+
+  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge });
+}
+
+// GET all objectives — triggers background readiness refresh for stale objectives
 router.get('/', async (_req, res) => {
   try {
     const snap = await collections.objectives().orderBy('date', 'asc').get();
     const items = snap.docs.map(docToObj).filter(Boolean);
     res.json(items);
+
+    // Background: refresh readiness for any objective that is stale
+    const stale = items.filter(isReadinessStale);
+    for (const obj of stale) {
+      buildReadiness(obj)
+        .then(readiness => {
+          if (readiness) {
+            return collections.objectives().doc(obj.id).update({ readiness });
+          }
+        })
+        .catch(err => console.error(`Auto-refresh readiness failed for ${obj.id}:`, err));
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch objectives' });
@@ -93,35 +138,14 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// POST generate readiness analysis for an objective
+// POST manually trigger readiness analysis for an objective
 router.post('/:id/readiness', async (req, res) => {
   try {
     const objDoc = await collections.objectives().doc(req.params.id).get();
     const objective = docToObj(objDoc);
     if (!objective) return res.status(404).json({ error: 'Not found' });
 
-    const [recentSnap, recordsSnap, profileDoc] = await Promise.all([
-      collections.sessions().orderBy('date', 'desc').limit(30).get(),
-      collections.records().orderBy('date', 'desc').limit(10).get(),
-      collections.profile().doc('main').get(),
-    ]);
-
-    const recentSessions = recentSnap.docs.map(docToObj).filter(Boolean);
-    const records = recordsSnap.docs.map(docToObj).filter(Boolean);
-    const profile = profileDoc.exists ? profileDoc.data() : {};
-
-    // Fetch relevant knowledge sections
-    const isHyrox = objective.type === 'hyrox';
-    const knowledgeIds = isHyrox
-      ? ['race_strategy', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running', 'running']
-      : ['race_strategy', 'running', 'running__pace_zones', 'running__race_prep'];
-    const knowledgeDocs = await Promise.all(knowledgeIds.map(id => collections.knowledge().doc(id).get()));
-    const knowledge = knowledgeDocs
-      .filter(d => d.exists && d.data().content?.trim())
-      .map(d => `[${d.id}]\n${d.data().content.trim()}`)
-      .join('\n\n---\n\n');
-
-    const readiness = await generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge });
+    const readiness = await buildReadiness(objective);
     if (!readiness) return res.status(503).json({ error: 'AI unavailable' });
 
     await collections.objectives().doc(req.params.id).update({ readiness });
