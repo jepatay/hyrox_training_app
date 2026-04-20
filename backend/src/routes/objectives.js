@@ -146,7 +146,7 @@ router.post('/:id/readiness', async (req, res) => {
     if (!objective) return res.status(404).json({ error: 'Not found' });
 
     const readiness = await buildReadiness(objective);
-    if (!readiness) return res.status(503).json({ error: 'AI unavailable' });
+    if (!readiness) return res.status(503).json({ error: process.env.OPENAI_API_KEY ? 'AI request failed — check server logs' : 'OPENAI_API_KEY is not configured on the server' });
 
     await collections.objectives().doc(req.params.id).update({ readiness });
     res.json({ readiness });

@@ -20,19 +20,27 @@ async function chat(prompt, maxTokens = 400) {
 }
 
 async function chatJson(prompt, maxTokens = 600) {
-  if (!process.env.OPENAI_API_KEY) return null;
-  const completion = await getClient().chat.completions.create({
-    model: 'gpt-4o',
-    max_tokens: maxTokens,
-    temperature: 0,
-    response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const raw = completion.choices[0].message.content;
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('chatJson: OPENAI_API_KEY is not set');
+    return null;
+  }
   try {
-    return JSON.parse(raw);
-  } catch {
-    console.error('chatJson: failed to parse JSON response', raw?.slice(0, 200));
+    const completion = await getClient().chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: maxTokens,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const raw = completion.choices[0].message.content;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      console.error('chatJson: failed to parse JSON response', raw?.slice(0, 200));
+      return null;
+    }
+  } catch (err) {
+    console.error('chatJson: OpenAI API error:', err?.status, err?.message);
     return null;
   }
 }

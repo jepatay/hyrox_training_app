@@ -67,8 +67,8 @@ export default function Objectives() {
       const { readiness } = await objectivesApi.readiness(id);
       setObjectives(prev => prev.map(o => o.id === id ? { ...o, readiness } : o));
       toast({ title: 'Analysis complete!' });
-    } catch {
-      toast({ title: 'Error', description: 'Could not generate analysis.', variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Analysis failed', description: err.message || 'Could not generate analysis.', variant: 'destructive' });
     } finally {
       setAnalyzingId(null);
     }
