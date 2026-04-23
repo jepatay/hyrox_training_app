@@ -79,12 +79,17 @@ export async function generateCoachingFeedback({ session, recentSessions, object
   const daysAgo = Math.round((new Date(today) - new Date(sessionDate)) / (1000 * 60 * 60 * 24));
   const whenLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
 
-  const prompt = `You are this athlete's dedicated personal HYROX and running coach. You know their full training history, their goals, and their personal approach to training. Give coaching feedback that feels like it comes from someone who truly knows them — not generic advice.
+  const classContext = session.isClass
+    ? `\nCLASS SESSION CONSTRAINT: This was a coach-led class or group session. The athlete did NOT choose the exercise selection, training structure, rest periods, or transitions between stations — those were dictated by the instructor. Do NOT suggest the athlete changes the structure, shortens breaks, tightens transitions, or modifies the programming. Focus only on what they personally control: technique, execution quality, mental focus, effort level, and how to apply learnings to their own training.`
+    : '';
+
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. You know their full training history, their goals, and their personal approach to training. Give coaching feedback that feels like it comes from someone who truly knows them — not generic advice.${classContext}
 
 Today's date: ${today}
 
 Session logged (${whenLabel} — ${sessionDate}):
 - Type: ${session.type}
+- Class/group session: ${session.isClass ? 'Yes — structure set by instructor' : 'No — self-directed'}
 - Duration: ${session.duration || '?'} minutes
 - RPE: ${session.rpe || '?'}/10
 - Feeling: ${session.feeling || 'not specified'}

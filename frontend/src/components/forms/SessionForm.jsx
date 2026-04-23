@@ -22,6 +22,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
     date: session?.date?.slice(0, 10) || today,
     type: session?.type || '',
     status: session?.status || 'completed',
+    isClass: session?.isClass || false,
     location: session?.location || '',
     venueId: session?.venueId || null,
     equipment: session?.equipment || '',
@@ -160,6 +161,19 @@ export default function SessionForm({ session, onClose, onSaved }) {
               ))}
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => set('isClass', !form.isClass)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors w-fit ${
+              form.isClass
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border hover:bg-secondary text-muted-foreground'
+            }`}
+          >
+            <span>👥</span>
+            <span className="text-xs">Class / Group Session</span>
+          </button>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
