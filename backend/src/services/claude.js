@@ -78,6 +78,7 @@ export async function generateCoachingFeedback({ session, recentSessions, object
   const sessionDate = session.date?.slice(0, 10) || today;
   const daysAgo = Math.round((new Date(today) - new Date(sessionDate)) / (1000 * 60 * 60 * 24));
   const whenLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+  const sessionRef = daysAgo === 0 ? "today's session" : daysAgo === 1 ? "yesterday's session" : `the session ${daysAgo} days ago (${sessionDate})`;
 
   const classContext = session.isClass
     ? `\nCLASS SESSION CONSTRAINT: This was a coach-led class or group session. The athlete did NOT choose the exercise selection, training structure, rest periods, or transitions between stations — those were dictated by the instructor. Do NOT suggest the athlete changes the structure, shortens breaks, tightens transitions, or modifies the programming. Focus only on what they personally control: technique, execution quality, mental focus, effort level, and how to apply learnings to their own training.`
@@ -96,7 +97,7 @@ Session logged (${whenLabel} — ${sessionDate}):
 - Notes: ${session.notes || 'none'}
 - Venue notes: ${venueNotes || 'none'}
 
-IMPORTANT: This session was on ${sessionDate} (${whenLabel}). Never say "today's session" if it was not today — reference it accurately as yesterday's, or 2 days ago, etc.
+IMPORTANT: When referring to this session, always call it "${sessionRef}". Do not recalculate the date yourself.
 
 Recent training (last 7 days):
 ${recentSummary}
