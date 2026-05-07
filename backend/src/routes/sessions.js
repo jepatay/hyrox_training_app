@@ -1,8 +1,23 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
+import { rebuildWeekDigest } from '../services/trainingLoad.js';
+import { extractExercisesFromNotes } from '../services/claude.js';
 import admin from 'firebase-admin';
 
 const router = Router();
+
+async function runBackgroundJobs(session) {
+  if (!session?.date) return;
+  await rebuildWeekDigest(session.date);
+
+  // Extract structured exercise data from notes and store back on the session
+  if (session.notes?.trim() && session.status === 'completed' && !session.extractedExercises) {
+    const extracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    if (extracted && session.id) {
+      await collections.sessions().doc(session.id).update({ extractedExercises: extracted });
+    }
+  }
+}
 
 // GET sessions with optional filters
 router.get('/', async (req, res) => {
@@ -66,6 +81,9 @@ router.post('/', async (req, res) => {
     });
     const created = docToObj(await ref.get());
     res.status(201).json(created);
+
+    // Background: rebuild weekly digest + extract exercise data from notes
+    runBackgroundJobs(created).catch(err => console.error('Background jobs failed (create):', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create session' });
@@ -81,6 +99,9 @@ router.put('/:id', async (req, res) => {
     await collections.sessions().doc(req.params.id).update(updates);
     const updated = docToObj(await collections.sessions().doc(req.params.id).get());
     res.json(updated);
+
+    // Background: rebuild weekly digest for the (possibly changed) date
+    runBackgroundJobs(updated).catch(err => console.error('Background jobs failed (update):', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update session' });

@@ -255,7 +255,35 @@ Be specific and motivating.`;
   return chat(prompt, 800);
 }
 
-export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge }) {
+// Extracts structured exercise/workout data from session notes in the background
+export async function extractExercisesFromNotes({ type, notes }) {
+  if (!notes?.trim()) return null;
+  const prompt = `Extract structured workout data from this training session note. Return JSON only.
+
+Session type: ${type}
+Notes: "${notes.trim().slice(0, 600)}"
+
+Return:
+{
+  "runType": "<easy|threshold|intervals|tempo|race|null — only for running>",
+  "estimatedPace": "<e.g. 4:30/km or null>",
+  "exercises": [
+    {
+      "name": "<sledPush|sledPull|farmersCarry|wallBalls|skiErg|rowErg|burpeeBroadJump|walkingLunges|squat|deadlift|benchPress|pullUp|run|other>",
+      "sets": <number or null>,
+      "reps": <number or null>,
+      "weightKg": <number or null>,
+      "distanceM": <number or null>,
+      "notes": "<any other relevant detail or null>"
+    }
+  ]
+}
+
+Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.`;
+  return chatJson(prompt, 400);
+}
+
+export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
     profile?.gender,
@@ -327,25 +355,29 @@ Also return "estimatedPerformance": a short string estimating the athlete's curr
     ? `\nKnowledge base (coaching notes, sport science, technique guides — use these to interpret what each training session actually develops and how it maps to each focus area):\n---\n${knowledge}\n---\n`
     : '';
 
+  const loadBlock = trainingLoadBlock
+    ? `\n${trainingLoadBlock}\n`
+    : '';
+
   const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}
 
 Athlete: ${profileLine}
 
 Objective:
 ${objectiveDetail}${stationInfo}
-
-Recent training (up to last 25 sessions, most recent first):
+${loadBlock}
+Recent sessions — last 20, most recent first (read notes for actual content: exercises, weights, distances, paces):
 ${recentSummary}
 
 Past race records/PRs:
 ${recordsSummary}
 
 How to score focus areas:
-- Read every session note carefully. Notes describe what was actually trained: exercises, weights, distances, reps, paces, sets. This is your primary signal.
-- Use the knowledge base to understand what each activity develops. For example: heavy sled push builds posterior chain strength; 400m intervals at race pace build speed; tempo runs build threshold.
-- Cross-reference the training content against what the objective demands. A session note like "5x sled push 150kg" is far more informative than RPE alone.
-- RPE is secondary context (it tells you effort, not content). Do not weight it heavily.
-- Look across all provided sessions, not just the most recent few. Identify trends: what has been trained consistently? What has been neglected for weeks?
+- Use the longitudinal load data (weekly digests + ATL/CTL) to understand training volume and intensity trends over the last 3 months. This is your primary source for understanding the athlete's overall development.
+- Read recent session notes for specific content: exercises, weights, reps, paces, sets. This tells you WHAT was trained and HOW intensively.
+- Use the knowledge base to understand what each activity develops and how it maps to race demands.
+- Volume and intensity consistency across weeks matters more than any single session. Look for trends: building, stable, tapering, neglected areas.
+- RPE is secondary context — it calibrates effort relative to the work done, but does not replace understanding the actual training content.
 - Use past records/PRs to calibrate baseline ability.
 
 Return a JSON object exactly like this:

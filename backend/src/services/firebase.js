@@ -19,12 +19,13 @@ function getDb() {
 }
 
 export const collections = {
-  objectives: () => getDb().collection('objectives'),
-  sessions: () => getDb().collection('sessions'),
-  records: () => getDb().collection('records'),
-  profile: () => getDb().collection('profile'),
-  venues: () => getDb().collection('venues'),
-  knowledge: () => getDb().collection('knowledge'),
+  objectives:    () => getDb().collection('objectives'),
+  sessions:      () => getDb().collection('sessions'),
+  records:       () => getDb().collection('records'),
+  profile:       () => getDb().collection('profile'),
+  venues:        () => getDb().collection('venues'),
+  knowledge:     () => getDb().collection('knowledge'),
+  weeklyDigests: () => getDb().collection('weeklyDigests'),
 };
 
 export function toDate(ts) {

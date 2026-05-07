@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { generateReadinessAnalysis } from '../services/claude.js';
+import { fetchWeeklyDigests, computeLoadFromDigests, formatLoadForPrompt } from '../services/trainingLoad.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -38,7 +39,12 @@ async function buildReadiness(objective) {
     })
     .join('\n\n---\n\n');
 
-  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge });
+  // Fetch longitudinal training data
+  const digests = await fetchWeeklyDigests(12);
+  const load = computeLoadFromDigests(digests);
+  const trainingLoadBlock = formatLoadForPrompt(digests, load);
+
+  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock });
 }
 
 // GET all objectives — triggers background readiness refresh for stale objectives
