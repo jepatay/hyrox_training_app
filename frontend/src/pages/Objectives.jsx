@@ -5,7 +5,8 @@ import { formatDate, daysUntil, OBJECTIVE_TYPES, PRIORITY_CONFIG } from '@/lib/u
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, Target, Clock, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Plus, Pencil, Trash2, Target, Clock, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import ObjectiveForm from '@/components/forms/ObjectiveForm';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -58,6 +59,16 @@ export default function Objectives() {
       toast({ title: 'Deleted', description: 'Objective removed.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
+    }
+  }
+
+  async function handleLogResult(id, actualResult) {
+    try {
+      const updated = await objectivesApi.update(id, { actualResult });
+      setObjectives(prev => prev.map(o => o.id === id ? { ...o, actualResult: updated.actualResult } : o));
+      toast({ title: 'Result logged!' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to save result', variant: 'destructive' });
     }
   }
 
@@ -139,6 +150,7 @@ export default function Objectives() {
               onEdit={() => setEditing(obj)}
               onDelete={() => handleDelete(obj.id)}
               onAnalyze={() => handleAnalyze(obj.id)}
+              onLogResult={(result) => handleLogResult(obj.id, result)}
               analyzing={analyzingId === obj.id}
               past
             />
@@ -157,11 +169,13 @@ export default function Objectives() {
   );
 }
 
-function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
+function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, onLogResult, analyzing, past }) {
   const priority = PRIORITY_CONFIG[obj.priority] || PRIORITY_CONFIG.C;
   const typeLabel = OBJECTIVE_TYPES.find(t => t.value === obj.type)?.label || obj.type;
   const days = daysUntil(obj.date);
   const [expanded, setExpanded] = useState(false);
+  const [loggingResult, setLoggingResult] = useState(false);
+  const [resultInput, setResultInput] = useState(obj.actualResult || '');
   const readiness = obj.readiness;
 
   return (
@@ -183,6 +197,12 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
                   <Clock className="h-3 w-3" /> {obj.targetTime}
                 </Badge>
               )}
+              {/* Actual result badge (past objectives) */}
+              {past && obj.actualResult && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full border text-green-400 border-green-400/30 bg-green-400/10 gap-1 inline-flex items-center">
+                  <CheckCircle2 className="h-3 w-3" /> {obj.actualResult}
+                </span>
+              )}
               {/* Readiness score badge */}
               {readiness?.score != null && (
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
@@ -190,7 +210,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
                   readiness.score >= 4 ? 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10' :
                   'text-red-400 border-red-400/30 bg-red-400/10'
                 }`}>
-                  Readiness {readiness.score}/10
+                  {past ? 'Pre-race' : 'Readiness'} {readiness.score}/10
                 </span>
               )}
             </div>
@@ -311,16 +331,50 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, analyzing, past }) {
                 Updated {new Date(readiness.updatedAt).toLocaleDateString()}
               </span>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onAnalyze}
-              disabled={analyzing}
-              className="gap-1 text-xs h-7 px-2 text-muted-foreground"
-            >
-              <RefreshCw className={`h-3 w-3 ${analyzing ? 'animate-spin' : ''}`} />
-              {analyzing ? 'Analysing…' : readiness ? 'Refresh' : 'Analyse'}
-            </Button>
+            {past ? (
+              loggingResult ? (
+                <div className="flex gap-1 items-center">
+                  <Input
+                    className="h-7 w-24 text-xs"
+                    placeholder="e.g. 19:09"
+                    value={resultInput}
+                    onChange={e => setResultInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && resultInput.trim()) { onLogResult(resultInput.trim()); setLoggingResult(false); }
+                      if (e.key === 'Escape') setLoggingResult(false);
+                    }}
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-green-400"
+                    onClick={() => { if (resultInput.trim()) { onLogResult(resultInput.trim()); } setLoggingResult(false); }}
+                  >Save</Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLoggingResult(true)}
+                  className="gap-1 text-xs h-7 px-2 text-muted-foreground"
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  {obj.actualResult ? 'Edit result' : 'Log result'}
+                </Button>
+              )
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onAnalyze}
+                disabled={analyzing}
+                className="gap-1 text-xs h-7 px-2 text-muted-foreground"
+              >
+                <RefreshCw className={`h-3 w-3 ${analyzing ? 'animate-spin' : ''}`} />
+                {analyzing ? 'Analysing…' : readiness ? 'Refresh' : 'Analyse'}
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>

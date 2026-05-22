@@ -54,8 +54,9 @@ router.get('/', async (_req, res) => {
     const items = snap.docs.map(docToObj).filter(Boolean);
     res.json(items);
 
-    // Background: refresh readiness for any objective that is stale
-    const stale = items.filter(isReadinessStale);
+    // Background: refresh readiness for upcoming objectives that are stale (skip past — preserve the pre-race score)
+    const today = new Date().toISOString().slice(0, 10);
+    const stale = items.filter(o => isReadinessStale(o) && o.date >= today);
     for (const obj of stale) {
       buildReadiness(obj)
         .then(readiness => {
@@ -116,7 +117,7 @@ router.post('/', async (req, res) => {
 // PUT update objective
 router.put('/:id', async (req, res) => {
   try {
-    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets } = req.body;
+    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets, actualResult } = req.body;
     await collections.objectives().doc(req.params.id).update({
       ...(name && { name }),
       ...(type && { type }),
@@ -126,6 +127,7 @@ router.put('/:id', async (req, res) => {
       ...(notes !== undefined && { notes }),
       ...(hyroxDivision !== undefined && { hyroxDivision }),
       ...(stationTargets !== undefined && { stationTargets }),
+      ...(actualResult !== undefined && { actualResult }),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     const updated = docToObj(await collections.objectives().doc(req.params.id).get());

@@ -372,13 +372,14 @@ ${recentSummary}
 Past race records/PRs:
 ${recordsSummary}
 
-How to score focus areas:
-- Use the longitudinal load data (weekly digests + ATL/CTL) to understand training volume and intensity trends over the last 3 months. This is your primary source for understanding the athlete's overall development.
-- Read recent session notes for specific content: exercises, weights, reps, paces, sets. This tells you WHAT was trained and HOW intensively.
-- Use the knowledge base to understand what each activity develops and how it maps to race demands.
-- Volume and intensity consistency across weeks matters more than any single session. Look for trends: building, stable, tapering, neglected areas.
-- RPE is secondary context — it calibrates effort relative to the work done, but does not replace understanding the actual training content.
-- Use past records/PRs to calibrate baseline ability.
+How to score readiness:
+- Use past race records/PRs as the primary calibration anchor. If the athlete has a record at or faster than the target, readiness starts at 7+ and is adjusted for training quality. If their best is within 5% of the target, baseline is 6-7.
+- Use the longitudinal load data (weekly digests + ATL/CTL) to understand volume and intensity trends. This is your primary source for development over the last 3 months.
+- Read recent session notes for specific content: exercises, weights, reps, paces, sets. This tells you WHAT was trained.
+- Use the knowledge base to map training to race demands.
+- Volume and intensity consistency across weeks matters more than any single session.
+- RPE is secondary context only.
+- Score meaning: 9-10 = athlete is in peak form and very likely to meet or exceed their target. 7-8 = training clearly supports the target; minor gaps only. 5-6 = some concern — athlete may fall short by 5-10%. 3-4 = meaningful risk of missing target by 10%+. 1-2 = major deficit, likely to miss significantly. Do NOT default to 5 as a neutral score. Ground every score in specific evidence from records and training data.
 
 Return a JSON object exactly like this:
 {
