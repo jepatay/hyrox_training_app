@@ -283,7 +283,7 @@ Only include what is explicitly mentioned. Return empty exercises array if nothi
   return chatJson(prompt, 400);
 }
 
-export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes }) {
+export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
     profile?.gender,
@@ -341,33 +341,20 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     ? 'Run, SkiErg, Sled Push, Sled Pull, Burpee Broad Jump, Row Erg, Farmers Carry, Walking Lunges, Wall Ball'
     : 'Speed/intervals, Endurance base, Lactate threshold, Strength';
 
+  const scaleBlock = readinessScaleNotes
+    ? `\nSTATION READINESS SCALE (defines what each score means per station — follow this exactly when producing radarData):\n---\n${readinessScaleNotes}\n---\n`
+    : '';
+
   const transferabilityRef = transferabilityNotes
-    ? `\n- The athlete has provided their own exercise-to-station mapping above ("ATHLETE'S EXERCISE TRANSFERABILITY NOTES"). Read it first. If they say exercise X develops station Y, accept that fully — do not second-guess it.`
+    ? ` Cross-reference the athlete's exercise transferability notes above to identify which gym exercises qualify as prerequisites for each station.`
     : '';
 
   const radarInstructions = isHyrox ? `
-Also return "radarData": an array of 10 objects.
+Also return "radarData": an array of 10 objects scoring each HYROX station.
+Use the STATION READINESS SCALE above to determine each score.${transferabilityRef}
+Score = readiness to PERFORM today based on physical capability, not HYROX-specific rep volume.
 
-WHAT THE SCORE MEANS: readiness to perform this station at/near target time TODAY, based on current physical capability. It is NOT a measure of HYROX-specific training volume. A 10 = athlete clearly has the physical prerequisites and is very likely to match or beat their target at this station. A 3 = athlete has a real physical weakness here that will likely cause them to blow up or go far over time.
-
-BEFORE scoring, re-read the athlete's transferability notes and session notes to identify what they actually train. Then apply this calibration:${transferabilityRef}
-
-Station-by-station calibration (score ≥7 if the listed prerequisites are clearly present in training):
-- wallBall: prerequisites = overhead pressing strength (push press / thruster / OHS at competition weight or heavier) + squat endurance. 100 reps at 6-9kg is NOT a high strength demand — if the athlete can push press 30kg+, they have the strength. Score 8-9 if heavy overhead work (thrusters, push press, OHS) is consistently present. Score 10 if heavy overhead + direct wall ball practice. NEVER score ≤4 for an athlete with consistent heavy overhead training.
-- walkingLunges: prerequisites = quad/glute endurance under load. Lunges, Bulgarian splits, heavy squats → sufficient. Score ≥7 if present.
-- farmersCarry: prerequisites = grip strength + core. Any heavy carries, deadlifts, or loaded walks → sufficient. Score ≥7 if present.
-- sledPush: prerequisites = leg drive and horizontal pushing power. Heavy squats, leg press, sled work → sufficient. Score ≥7 if present.
-- sledPull: prerequisites = posterior chain pulling. Deadlifts, Romanian DLs, cable pulls, any rope/belt pull work → sufficient. Score ≥7 if present.
-- skiErg: prerequisites = lat/shoulder endurance + pulling mechanics. Cable rows, lat pulldown, ski erg practice. Score 6-7 if upper pulling is present but no direct SkiErg work; 8+ with direct SkiErg practice.
-- rowErg: same pattern as skiErg. Rowing machine or similar pulling transfers well.
-- farmersCarry: see above.
-- burpeeBroadJump: most HYROX-specific station. Requires recent burpee practice (or plyometric jumping). Upper-body strength does NOT substitute. Score ≤5 if no recent burpee or explosive jump training; 7-8 if plyometric/burpee work is in training.
-- running: use running ATL/CTL data and weekly mileage trend directly. Score based on running fitness, not gym work.
-- overall: weighted average reflecting the athlete's probable overall race performance.
-
-Components to return:
-"overall" → "Overall", "running" → "Running", "skiErg" → "SkiErg", "sledPush" → "Sled Push", "sledPull" → "Sled Pull", "burpeeBroadJump" → "Burpee BJ", "rowErg" → "Row Erg", "farmersCarry" → "Farmers Carry", "walkingLunges" → "Lunges", "wallBall" → "Wall Ball"
-
+Components: "overall"→"Overall", "running"→"Running", "skiErg"→"SkiErg", "sledPush"→"Sled Push", "sledPull"→"Sled Pull", "burpeeBroadJump"→"Burpee BJ", "rowErg"→"Row Erg", "farmersCarry"→"Farmers Carry", "walkingLunges"→"Lunges", "wallBall"→"Wall Ball"
 Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
 
   const estimatedPerfInstruction = !isHyrox ? `
@@ -385,7 +372,7 @@ Also return "estimatedPerformance": a short string estimating the athlete's curr
     ? `\n${trainingLoadBlock}\n`
     : '';
 
-  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}${transferabilityBlock}
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}${scaleBlock}${transferabilityBlock}
 
 Athlete: ${profileLine}
 

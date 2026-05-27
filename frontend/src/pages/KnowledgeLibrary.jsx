@@ -22,6 +22,7 @@ const TREE = [
     label: 'HYROX Stations',
     icon: '🔥',
     children: [
+      { id: 'hyrox__readiness_scale', label: '📊 Station Readiness Scale' },
       { id: 'exercise_transferability', label: '⚡ Exercise Transferability' },
       { id: 'hyrox__skierg', label: 'SkiErg' },
       { id: 'hyrox__sled_push', label: 'Sled Push' },
