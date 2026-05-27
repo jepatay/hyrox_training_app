@@ -30,7 +30,13 @@ async function buildReadiness(objective) {
   const knowledgeIds = isHyrox
     ? ['race_strategy', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running', 'running']
     : ['race_strategy', 'running', 'running__pace_zones', 'running__race_prep'];
-  const knowledgeDocs = await Promise.all(knowledgeIds.map(id => collections.knowledge().doc(id).get()));
+
+  // Fetch exercise transferability separately — no truncation, injected as high-priority context
+  const [knowledgeDocs, transferDoc] = await Promise.all([
+    Promise.all(knowledgeIds.map(id => collections.knowledge().doc(id).get())),
+    isHyrox ? collections.knowledge().doc('exercise_transferability').get() : Promise.resolve(null),
+  ]);
+
   const knowledge = knowledgeDocs
     .filter(d => d.exists && d.data().content?.trim())
     .map(d => {
@@ -39,12 +45,14 @@ async function buildReadiness(objective) {
     })
     .join('\n\n---\n\n');
 
+  const transferabilityNotes = transferDoc?.exists ? transferDoc.data().content?.trim() || null : null;
+
   // Fetch longitudinal training data
   const digests = await fetchWeeklyDigests(12);
   const load = computeLoadFromDigests(digests);
   const trainingLoadBlock = formatLoadForPrompt(digests, load);
 
-  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock });
+  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes });
 }
 
 // GET all objectives — triggers background readiness refresh for stale objectives

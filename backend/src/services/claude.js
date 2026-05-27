@@ -283,7 +283,7 @@ Only include what is explicitly mentioned. Return empty exercises array if nothi
   return chatJson(prompt, 400);
 }
 
-export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock }) {
+export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
     profile?.gender,
@@ -361,14 +361,18 @@ Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
 Also return "estimatedPerformance": a short string estimating the athlete's current realistic performance range for this race type based on their training and records (e.g. "~19:45–20:30 for 5K today"). Be honest and specific. If insufficient data, make a conservative estimate and say so.` : '';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nKnowledge base (coaching notes, sport science, technique guides — use these to interpret what each training session actually develops and how it maps to each focus area):\n---\n${knowledge}\n---\n`
+    ? `\nKnowledge base (coaching notes, sport science, technique guides):\n---\n${knowledge}\n---\n`
+    : '';
+
+  const transferabilityBlock = transferabilityNotes
+    ? `\nATHLETE'S EXERCISE TRANSFERABILITY NOTES — treat this as the PRIMARY source when scoring individual HYROX stations. It describes exactly what exercises this athlete trains and how they map to each station. Override any generic assumptions with this:\n---\n${transferabilityNotes}\n---\n`
     : '';
 
   const loadBlock = trainingLoadBlock
     ? `\n${trainingLoadBlock}\n`
     : '';
 
-  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}${transferabilityBlock}
 
 Athlete: ${profileLine}
 

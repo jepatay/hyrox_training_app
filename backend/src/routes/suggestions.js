@@ -20,8 +20,8 @@ function knowledgeIdsForSuggestion(focus, equipment) {
     farmers_carry: ['hyrox__farmers_carry'],
     lunges:        ['hyrox__sandbag_lunges'],
     wall_balls:    ['hyrox__wall_balls'],
-    hyrox_full:    ['hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'],
-    strength:      ['strength_conditioning'],
+    hyrox_full:    ['exercise_transferability', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'],
+    strength:      ['exercise_transferability', 'strength_conditioning'],
     recovery:      ['recovery_mobility'],
   };
   if (focus && focusMap[focus]) ids.push(...focusMap[focus]);

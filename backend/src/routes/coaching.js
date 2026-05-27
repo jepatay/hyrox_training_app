@@ -18,13 +18,14 @@ function knowledgeIdsForSession(type) {
     case 'hyrox_training':
     case 'hyrox_race':
       ids.push(
+        'exercise_transferability',
         'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull',
         'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry',
         'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'
       );
       break;
     case 'gym_strength':
-      ids.push('strength_conditioning');
+      ids.push('exercise_transferability', 'strength_conditioning');
       break;
     case 'cycling':
       ids.push('cycling', 'cycling__base_endurance', 'cycling__cross_training', 'cycling__intervals');
