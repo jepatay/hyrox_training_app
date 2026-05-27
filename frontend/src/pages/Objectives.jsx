@@ -11,12 +11,25 @@ import ObjectiveForm from '@/components/forms/ObjectiveForm';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 const STATION_LABELS = {
-  run: 'Run', skiErg: 'SkiErg', sledPush: 'Sled Push', sledPull: 'Sled Pull',
+  run: 'Run', running: 'Running', skiErg: 'SkiErg', sledPush: 'Sled Push', sledPull: 'Sled Pull',
   burpeeBroadJump: 'Burpee BJ', rowErg: 'Row Erg', farmersCarry: 'Farmers Carry',
   walkingLunges: 'Lunges', wallBall: 'Wall Ball',
   // running objective focus areas
   speed: 'Speed Work', endurance: 'Endurance', threshold: 'Threshold', strength: 'Strength',
 };
+
+// Collapse legacy run1-run8 spokes into a single "Running" entry
+function normalizeRadarData(radarData) {
+  if (!radarData?.length) return radarData;
+  const runs = radarData.filter(d => /^run\d+$/.test(d.key));
+  if (runs.length === 0) return radarData;
+  const avgRun = Math.round(runs.reduce((s, r) => s + r.readiness, 0) / runs.length);
+  const rest = radarData.filter(d => !/^run\d+$/.test(d.key));
+  const overallIdx = rest.findIndex(d => d.key === 'overall');
+  const result = [...rest];
+  result.splice(overallIdx + 1, 0, { key: 'running', label: 'Running', readiness: avgRun });
+  return result;
+}
 
 function focusColor(score) {
   if (score >= 7) return 'bg-green-500';
@@ -177,6 +190,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, onLogResult, analyzin
   const [loggingResult, setLoggingResult] = useState(false);
   const [resultInput, setResultInput] = useState(obj.actualResult || '');
   const readiness = obj.readiness;
+  const radarChartData = readiness?.radarData?.length ? normalizeRadarData(readiness.radarData) : null;
 
   return (
     <Card className={past ? 'opacity-60' : ''}>
@@ -241,7 +255,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, onLogResult, analyzin
                 )}
 
                 {/* Radar chart — HYROX objectives */}
-                {readiness.radarData?.length > 0 && (
+                {radarChartData && (
                   <div className="mt-3">
                     <button
                       onClick={() => setExpanded(v => !v)}
@@ -253,8 +267,8 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, onLogResult, analyzin
                     {expanded && (
                       <div className="mt-3">
                         <p className="text-xs text-muted-foreground mb-1">Outer = ready · Inner = needs work</p>
-                        <ResponsiveContainer width="100%" height={340}>
-                          <RadarChart data={readiness.radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <RadarChart data={radarChartData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
                             <PolarGrid stroke="#374151" />
                             <PolarAngleAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} />
                             <PolarRadiusAxis domain={[0, 10]} tick={false} axisLine={false} />

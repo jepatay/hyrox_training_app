@@ -342,10 +342,19 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
     : 'Speed/intervals, Endurance base, Lactate threshold, Strength';
 
   const radarInstructions = isHyrox ? `
-Also return "radarData": an array of 17 objects showing readiness (0-10, where 10 = fully ready, 0 = not at all ready) for:
-- "overall" (Overall Time)
-- "run1" through "run8" (each of the 8 x 1km running segments — account for cumulative fatigue: later runs should generally score lower unless the athlete has strong endurance)
-- "skiErg", "sledPush", "sledPull", "burpeeBroadJump", "rowErg", "farmersCarry", "walkingLunges", "wallBall" (each station)
+Also return "radarData": an array of 10 objects showing readiness (0-10) for each HYROX component.
+
+Rules for scoring radarData — these override general guidance:
+- Score each station from RECENT TRAINING CONTENT (last 4-8 weeks of session notes and weekly digests). Do NOT use past race records to score individual stations — records inform the overall score only.
+- Apply exercise transferability strictly: thrusters / push press / overhead squats → wall ball; heavy carries / pulls → sled stations and farmers carry; rowing machine / upper-body pulling → SkiErg and Row Erg; lunges / Bulgarian squats / single-leg work → walking lunges; burpee broad jump requires SPECIFIC burpee or plyometric jumping practice — general fitness does NOT substitute.
+- If no recent training covers a station (directly or through transfer), score ≤ 4 regardless of past race results.
+- If training clearly and consistently covers a station, score ≥ 7.
+- Avoid defaulting to mid-range (4-6) without specific evidence. Be precise.
+- Running: score the combined 8×1km running demand using running training volume, pace data, and running ATL/CTL trend.
+
+Components to return (key → label):
+"overall" → "Overall", "running" → "Running", "skiErg" → "SkiErg", "sledPush" → "Sled Push", "sledPull" → "Sled Pull", "burpeeBroadJump" → "Burpee BJ", "rowErg" → "Row Erg", "farmersCarry" → "Farmers Carry", "walkingLunges" → "Lunges", "wallBall" → "Wall Ball"
+
 Each object: { "key": "<key>", "label": "<label>", "readiness": <0-10> }` : '';
 
   const estimatedPerfInstruction = !isHyrox ? `
