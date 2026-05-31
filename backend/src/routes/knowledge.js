@@ -169,6 +169,35 @@ Indoor cycling (Zwift, turbo trainer) sessions are highly controlled — no coas
 - A sustained 200–250 W for 45–60 min represents solid aerobic work for a 70–80 kg athlete
 - Short intervals at 300–400 W+ indicate high-intensity work regardless of FTP
 
+## Elevation & pace interpretation
+Speed on a bike is heavily dependent on gradient. The same watt output produces very different speeds:
+- Flat road: 30–40 km/h at moderate effort
+- 4–6% gradient: 12–18 km/h at the same effort
+- 8–10% gradient: 8–12 km/h even at high effort
+
+**Never interpret slow average speed as low effort without checking total elevation gain.**
+A ride averaging 18 km/h with 800 m of climbing is a harder session than 28 km/h on flat terrain.
+
+Per-lap or per-segment elevation in session notes is the key signal. When elevation is present:
+- Slower segments = climbing, not fatigue or poor fitness
+- High average elevation gain per km (>15 m/km) = hilly route — adjust effort expectations accordingly
+- Strava's "Grade Adjusted Pace" equivalent for cycling is power-to-weight: look at watts and RPE, not speed
+
+## Weight vest on the bike
+Cycling with a weight vest is equivalent to riding a heavier bike — or being a larger, heavier rider. The physics are identical: more total system mass means more watts required to maintain speed, especially on climbs.
+
+**Pace and speed will be meaningfully slower — do NOT interpret this as lower fitness.**
+
+Effect by context:
+- **Flat terrain**: modest impact at speed (aerodynamic drag dominates). A 9 kg vest adds ~11–13% system weight but only ~5–8% more effort on flat.
+- **Climbing**: effect is proportional to gradient. On a 6% climb, a 9 kg vest on a 75 kg rider (84 kg total) requires ~12% more watts to maintain the same speed. Expect 1–2 km/h slower per percent of gradient.
+- **Intervals**: peak power output is unaffected but sustained threshold power at the same RPE will drop — the extra weight increases the cardiovascular cost.
+
+When session notes mention a weight vest during cycling:
+- The athlete's unloaded cycling fitness is stronger than the pace/speed suggests
+- Treat the session as higher training load than the numbers alone indicate
+- Direct HYROX benefit: builds strength endurance in legs and core under load — transfers well to sled push/pull and weighted carries
+
 ## Calorie and effort estimation
 Cycling burns significant calories even at moderate intensity. A 60-min ride at RPE 7 may burn 600–900 kcal. Account for this in recovery assessment — post-ride nutrition affects next-day training quality.
 
