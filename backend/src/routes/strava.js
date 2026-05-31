@@ -176,6 +176,7 @@ function buildNotes(act, detail, zones) {
         const sec = elapsed % 60;
         let row = `  Rep ${i + 1}: ${dist}m @ ${p} (${min}:${String(sec).padStart(2, '0')})`;
         if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
+        if (l.total_elevation_gain > 5) row += ` · +${Math.round(l.total_elevation_gain)}m`;
         lines.push(row);
       });
 
@@ -201,6 +202,7 @@ function buildNotes(act, detail, zones) {
         if (p) row += ` @ ${p}`;
         row += ` (${min}:${String(sec).padStart(2, '0')})`;
         if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
+        if (l.total_elevation_gain > 5) row += ` · +${Math.round(l.total_elevation_gain)}m`;
         lines.push(row);
       });
     }
@@ -217,6 +219,9 @@ function buildNotes(act, detail, zones) {
         const pSc = Math.round(pSec % 60);
         let row = `  km ${i + 1}: ${pMin}:${String(pSc).padStart(2, '0')}/km`;
         if (s.average_heartrate) row += ` · ${Math.round(s.average_heartrate)} bpm`;
+        if (s.elevation_difference && Math.abs(s.elevation_difference) > 3) {
+          row += ` · ${s.elevation_difference > 0 ? '+' : ''}${Math.round(s.elevation_difference)}m`;
+        }
         lines.push(row);
       });
     }
