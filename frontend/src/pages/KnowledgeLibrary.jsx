@@ -15,6 +15,9 @@ const TREE = [
       { id: 'running__race_prep', label: 'Race Prep (5K, 10K, Half)' },
       { id: 'running__pace_zones', label: 'Pace Zones' },
       { id: 'running__key_sessions', label: 'Key Sessions' },
+      { id: 'running__elevation', label: '⛰️ Elevation & Pace' },
+      { id: 'running__weight_vest', label: '🦺 Weight Vest Training' },
+      { id: 'training__stairs', label: '🪜 Stairs Training' },
     ],
   },
   {

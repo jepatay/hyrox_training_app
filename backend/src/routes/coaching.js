@@ -10,10 +10,10 @@ function knowledgeIdsForSession(type) {
   const ids = ['race_strategy'];
   switch (type) {
     case 'running':
-      ids.push('running', 'running__pace_zones', 'running__key_sessions', 'running__race_prep');
+      ids.push('running', 'running__pace_zones', 'running__key_sessions', 'running__race_prep', 'running__elevation', 'running__weight_vest');
       break;
     case 'stairs':
-      ids.push('running', 'hyrox__running');
+      ids.push('running', 'hyrox__running', 'training__stairs', 'running__weight_vest');
       break;
     case 'hyrox_training':
     case 'hyrox_race':
@@ -21,7 +21,8 @@ function knowledgeIdsForSession(type) {
         'exercise_transferability',
         'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull',
         'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry',
-        'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running'
+        'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running',
+        'running__weight_vest'
       );
       break;
     case 'gym_strength':

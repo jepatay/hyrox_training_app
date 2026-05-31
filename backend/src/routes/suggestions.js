@@ -8,10 +8,10 @@ const router = Router();
 function knowledgeIdsForSuggestion(focus, equipment) {
   const ids = ['race_strategy'];
   const focusMap = {
-    running:       ['running', 'running__pace_zones', 'running__key_sessions'],
-    intervals:     ['running', 'running__pace_zones', 'running__key_sessions'],
-    tempo:         ['running', 'running__pace_zones'],
-    long_run:      ['running', 'running__key_sessions'],
+    running:       ['running', 'running__pace_zones', 'running__key_sessions', 'running__elevation', 'running__weight_vest'],
+    intervals:     ['running', 'running__pace_zones', 'running__key_sessions', 'running__elevation'],
+    tempo:         ['running', 'running__pace_zones', 'running__elevation'],
+    long_run:      ['running', 'running__key_sessions', 'running__elevation'],
     skiErg:        ['hyrox__skierg'],
     sled_push:     ['hyrox__sled_push'],
     sled_pull:     ['hyrox__sled_pull'],
