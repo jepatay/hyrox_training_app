@@ -155,6 +155,32 @@ function buildNotes(act, detail, zones) {
     lines.push(detail.max_heartrate ? `${hr} (max ${Math.round(detail.max_heartrate)})` : hr);
   }
 
+  // Cadence — running returns strides/min (×2 = steps/min), cycling returns RPM
+  if (detail?.average_cadence) {
+    const sportType = detail.sport_type || detail.type || '';
+    const isRun = /run|walk|hike/i.test(sportType);
+    const cadence = isRun ? Math.round(detail.average_cadence * 2) : Math.round(detail.average_cadence);
+    const unit = isRun ? 'spm' : 'rpm';
+    lines.push(`Avg cadence: ${cadence} ${unit}`);
+  }
+
+  // Calories
+  if (detail?.calories) lines.push(`Calories: ${Math.round(detail.calories)} kcal`);
+
+  // Best efforts (PRs within this run — e.g. best 1km, 5km)
+  if (detail?.best_efforts?.length) {
+    const notable = ['400m', '1k', '1 mile', '5k', '10k', 'Half-Marathon', 'Marathon'];
+    const prs = detail.best_efforts.filter(e => notable.includes(e.name) && e.pr_rank === 1);
+    if (prs.length) {
+      lines.push('');
+      lines.push(`PRs in this run: ${prs.map(e => {
+        const m = Math.floor(e.elapsed_time / 60);
+        const s = e.elapsed_time % 60;
+        return `${e.name} ${m}:${String(s).padStart(2, '0')}`;
+      }).join(', ')}`);
+    }
+  }
+
   // ── LAP DATA ──
   const laps = detail?.laps;
   if (laps?.length > 1) {
@@ -313,6 +339,11 @@ router.post('/sync', async (_req, res) => {
         ]);
       } catch {}
 
+      // Use athlete's perceived exertion from Strava as RPE if available
+      const rpe = detail?.perceived_exertion
+        ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
+        : null;
+
       await collections.sessions().add({
         stravaActivityId: act.id,
         stravaActivityName: act.name,
@@ -324,7 +355,7 @@ router.post('/sync', async (_req, res) => {
         runningDistance: distanceKm,
         notes: buildNotes(act, detail, zones),
         location: act.location_city || '',
-        rpe: null,
+        rpe,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -366,9 +397,13 @@ router.post('/backfill-notes', async (_req, res) => {
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
         ]);
         const notes = buildNotes({ description: detail.description }, detail, zones);
+        const rpe = detail?.perceived_exertion
+          ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
+          : undefined;
         if (notes.trim()) {
           await collections.sessions().doc(doc.id).update({
             notes,
+            ...(rpe != null && { rpe }),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           updated++;
