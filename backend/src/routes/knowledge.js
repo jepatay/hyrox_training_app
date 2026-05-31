@@ -158,6 +158,81 @@ Stairs are excellent preparation for:
 
 ## Duration is the primary metric
 Since distance and elevation are unreliable for stairs, use duration + RPE as the primary load indicators.`,
+
+  cycling: `# Cycling — General Context
+
+## Indoor vs outdoor
+Indoor cycling (Zwift, turbo trainer) sessions are highly controlled — no coasting, no traffic, consistent effort. Watts are the primary metric; pace and distance are virtual and not comparable to outdoor riding. Do not compare indoor km to outdoor km.
+
+## Power (watts) interpretation
+- Without an FTP reference, use watts relative to RPE and duration to gauge effort
+- A sustained 200–250 W for 45–60 min represents solid aerobic work for a 70–80 kg athlete
+- Short intervals at 300–400 W+ indicate high-intensity work regardless of FTP
+
+## Calorie and effort estimation
+Cycling burns significant calories even at moderate intensity. A 60-min ride at RPE 7 may burn 600–900 kcal. Account for this in recovery assessment — post-ride nutrition affects next-day training quality.
+
+## What to ignore
+- Strava cycling "pace" or "speed" is not meaningful in isolation without route context
+- Virtual elevation on indoor rides (e.g. Zwift climbs) reflects resistance changes, not real climbing — treat as interval structure cues, not elevation load`,
+
+  cycling__base_endurance: `# Cycling Base Endurance
+
+## What it is
+Zone 2 riding: sustained effort at low-to-moderate intensity (RPE 4–6) for 45 min or more. The goal is aerobic engine development.
+
+## Key indicators of quality base work
+- Long duration (60–120 min) at steady, conversational effort
+- Heart rate stays in lower aerobic zone throughout
+- Watts stay consistent without surges
+- RPE 4–6 for the full session
+
+## HYROX relevance
+Base cycling builds the aerobic engine that underpins all HYROX performance. An athlete doing regular 60–90 min zone 2 rides 2–3× per week is developing the cardiovascular base that transfers to running endurance and recovery between stations.
+
+## Interpreting session notes
+A 90-min ride at RPE 5 with consistent effort is more valuable aerobic work than a 45-min ride with RPE spikes. Look for duration × consistency, not peak intensity.`,
+
+  cycling__cross_training: `# Cycling as Cross-Training for HYROX
+
+## Why it matters
+Cycling is the primary cross-training modality for HYROX athletes. It builds aerobic capacity with minimal running impact stress — important for high-volume training weeks.
+
+## What transfers to running
+- Cardiovascular efficiency (VO2max, lactate threshold) transfers well
+- Cycling does NOT develop running-specific neuromuscular patterns — leg speed, ground contact, running economy are not trained
+- Rule of thumb: 3 hours of quality cycling ≈ 1 hour of running for aerobic development, but zero running-specific adaptation
+
+## What transfers to HYROX stations
+- Leg endurance for sled push/pull, lunges, wall balls (quadriceps and glutes heavily loaded)
+- Hip extension strength from hill/resistance intervals
+- Does NOT transfer to upper-body pulling stations (SkiErg, rowing)
+- Does NOT substitute for burpee broad jump (explosive hip extension is different pattern)
+
+## Volume interpretation
+A week with high cycling volume but low running volume still represents meaningful training load. Do not treat a low-running week as "detraining" if cycling volume was high and the athlete's event is multiple weeks away.
+
+## Caution
+Over-reliance on cycling without running risks arriving at HYROX undertrained for the 8 × 1 km run segments. Running-specific adaptation requires running. Cycling supplements but does not replace it.`,
+
+  cycling__intervals: `# Cycling Intervals
+
+## Types and their purpose
+- **Short sprints (10–30 s)**: neuromuscular power, sprint top-end. High RPE 9–10.
+- **VO2max intervals (3–8 min)**: improve aerobic ceiling. RPE 8–9. Rest = ~work duration.
+- **Threshold intervals (10–20 min)**: push lactate threshold up. RPE 7–8. Often done as 2–3 × 10–20 min.
+- **Sweet spot (88–93% FTP)**: high bang-for-buck training. RPE 6–7.5. 2–4 × 8–15 min.
+
+## Interpreting interval sessions
+- If session notes show short work periods with long rests → power/sprint focus
+- If session notes show long blocks (10–20 min) at sustained effort → threshold work
+- Intervals at RPE 8–9 count as hard training load regardless of total duration
+
+## Cadence
+Higher cadence (90–100 rpm) reduces leg fatigue and teaches neuromuscular efficiency that helps running turnover. Lower cadence (<75 rpm) with high resistance builds leg strength — transfers to sled push/pull and lunges.
+
+## HYROX interval transfer
+Short high-power cycling intervals (VO2max work) develop the same cardiovascular qualities as hard running intervals but with lower injury risk. They are a valid training stimulus for HYROX peak fitness if running volume is limited.`,
 };
 
 // GET /api/knowledge/:id  — fetch content for a section
