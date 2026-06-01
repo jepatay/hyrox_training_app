@@ -41,11 +41,14 @@ export async function rebuildWeekDigest(dateStr) {
   const groups = {};
   for (const s of sessions) {
     const g = TYPE_GROUP[s.type] || 'other';
-    if (!groups[g]) groups[g] = { sessions: 0, totalMin: 0, totalKm: 0, rpeSum: 0, rpeCount: 0 };
+    if (!groups[g]) groups[g] = { sessions: 0, totalMin: 0, totalKm: 0, rpeSum: 0, rpeCount: 0, totalLoad: 0 };
     groups[g].sessions++;
     groups[g].totalMin += s.duration || 0;
     if (s.runningDistance) groups[g].totalKm += Number(s.runningDistance) || 0;
     if (s.rpe) { groups[g].rpeSum += s.rpe; groups[g].rpeCount++; }
+    // sessionLoad: use stored value, or compute from rpe × duration for legacy sessions
+    const load = s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0);
+    groups[g].totalLoad += load;
   }
 
   const byGroup = {};
@@ -55,14 +58,20 @@ export async function rebuildWeekDigest(dateStr) {
       totalMin: d.totalMin,
       totalKm: d.totalKm > 0 ? Math.round(d.totalKm * 10) / 10 : null,
       avgRpe: d.rpeCount > 0 ? Math.round(d.rpeSum / d.rpeCount * 10) / 10 : null,
+      totalLoad: d.totalLoad > 0 ? d.totalLoad : null,
     };
   }
+
+  const weeklyLoad = sessions.reduce((sum, s) => {
+    return sum + (s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0));
+  }, 0);
 
   const digest = {
     weekStart: monday,
     weekEnd: sundayStr,
     totalSessions: sessions.length,
     totalMin: sessions.reduce((sum, s) => sum + (s.duration || 0), 0),
+    weeklyLoad: weeklyLoad || null,
     byGroup,
     updatedAt: new Date().toISOString(),
   };
@@ -130,9 +139,11 @@ export function formatLoadForPrompt(digests, load) {
         const label = GROUP_LABEL[g] || g;
         const km = v.totalKm ? ` ${v.totalKm}km` : '';
         const rpe = v.avgRpe ? ` RPE ${v.avgRpe}` : '';
-        return `${label}: ${v.sessions}×${km}, ${v.totalMin}min${rpe}`;
+        const load = v.totalLoad ? ` Load ${v.totalLoad}` : '';
+        return `${label}: ${v.sessions}×${km}, ${v.totalMin}min${rpe}${load}`;
       });
-    return `  ${d.weekStart}: ${d.totalSessions} sessions — ${parts.join(' | ') || 'no data'}`;
+    const weekLoad = d.weeklyLoad ? ` [weekly load: ${d.weeklyLoad}]` : '';
+    return `  ${d.weekStart}: ${d.totalSessions} sessions — ${parts.join(' | ') || 'no data'}${weekLoad}`;
   }).join('\n');
 
   const loadLines = Object.entries(load).map(([g, v]) => {

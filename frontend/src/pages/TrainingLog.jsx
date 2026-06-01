@@ -272,7 +272,15 @@ export default function TrainingLog() {
                         <span className="text-xs text-muted-foreground">{formatDate(session.date)}</span>
                         {session.duration && <span className="text-xs text-muted-foreground">{formatDuration(session.duration)}</span>}
                         {session.runningDistance && <span className="text-xs text-muted-foreground">{session.runningDistance} km</span>}
-                        {session.rpe && <span className="text-xs font-medium text-orange-400">RPE {session.rpe}</span>}
+                        {session.rpe != null && (
+                          <span className="text-xs font-medium text-orange-400">
+                            RPE {session.rpe}
+                            {session.volume ? ` · ${session.volume}` : ' · Vol —'}
+                            {session.sessionLoad
+                              ? ` · Load ${session.sessionLoad}`
+                              : (session.rpe && session.duration ? ` · Load ${Math.round(session.rpe * session.duration)}` : ' · Load —')}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">

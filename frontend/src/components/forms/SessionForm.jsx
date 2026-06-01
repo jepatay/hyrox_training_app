@@ -16,6 +16,25 @@ const EXERCISES = [
   'Push Up', 'Squat', 'Deadlift', 'Bench Press', 'KB Swing', 'Assault Bike',
 ];
 
+const RPE_LABELS = {
+  1: 'Recovery — effortless, Zone 1',
+  2: 'Recovery — effortless, Zone 1',
+  3: 'Easy — conversational, Zone 2',
+  4: 'Easy — conversational, Zone 2',
+  5: 'Moderate — short sentences, Zone 3',
+  6: 'Moderate — short sentences, Zone 3',
+  7: 'Hard — threshold, Zone 4',
+  8: 'Very hard — race pace, Zone 4–5',
+  9: 'Near maximal — interval pace, Zone 5',
+  10: 'Maximal — true all-out, unsustainable',
+};
+
+const VOLUME_DESCRIPTIONS = {
+  Low: 'Under ~30 min of actual work — stopped because it was hard, not too much',
+  Medium: '30–60 min of work — solid amount, could have done a bit more',
+  High: '60+ min or high rep count — legs depleted from quantity, not just peak effort',
+};
+
 export default function SessionForm({ session, onClose, onSaved }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
@@ -28,7 +47,8 @@ export default function SessionForm({ session, onClose, onSaved }) {
     equipment: session?.equipment || '',
     duration: session?.duration || '',
     runningDistance: session?.runningDistance || '',
-    rpe: session?.rpe || '',
+    rpe: session?.rpe != null ? session.rpe : '',
+    volume: session?.volume || '',
     notes: session?.notes || '',
     exercises: session?.exercises || [],
   });
@@ -61,6 +81,9 @@ export default function SessionForm({ session, onClose, onSaved }) {
   const locationSelectValue = form.venueId ? `venue:${form.venueId}` : form.location;
   const selectedVenue = form.venueId ? venues.find(v => v.id === form.venueId) : null;
 
+  const rpeInt = form.rpe !== '' ? Math.round(Number(form.rpe)) : null;
+  const sessionLoad = rpeInt && form.duration ? Math.round(rpeInt * parseInt(form.duration)) : null;
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.date || !form.type) {
@@ -69,11 +92,15 @@ export default function SessionForm({ session, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-    const data = {
+      const rpe = form.rpe !== '' ? Math.round(Number(form.rpe)) : null;
+      const duration = form.duration ? parseInt(form.duration) : null;
+      const data = {
         ...form,
-        duration: form.duration ? parseInt(form.duration) : null,
+        duration,
         runningDistance: form.runningDistance ? parseFloat(String(form.runningDistance).replace(',', '.')) : null,
-        rpe: form.rpe ? parseFloat(String(form.rpe).replace(',', '.')) : null,
+        rpe,
+        volume: form.volume || null,
+        sessionLoad: rpe && duration ? Math.round(rpe * duration) : null,
       };
       let saved;
       if (session) {
@@ -229,12 +256,78 @@ export default function SessionForm({ session, onClose, onSaved }) {
           )}
 
           {form.status === 'completed' && (
-            <div className="border border-border rounded-lg p-4 space-y-4">
-              <p className="text-sm font-medium text-muted-foreground">Post-Session Feedback</p>
-              <div className="space-y-1.5">
-                <Label>RPE (1–10)</Label>
-                <Input type="number" min="1" max="10" step="0.5" placeholder="7" value={form.rpe} onChange={e => set('rpe', e.target.value)} />
+            <div className="border border-border rounded-lg p-4 space-y-5">
+              <p className="text-sm font-medium">Post-Session Metrics</p>
+
+              {/* Intensity RPE */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Intensity — how hard?</Label>
+                  {rpeInt != null && (
+                    <span className={`text-sm font-bold ${
+                      rpeInt >= 9 ? 'text-red-400' : rpeInt >= 7 ? 'text-yellow-400' : 'text-green-400'
+                    }`}>{rpeInt}/10</span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                    <button
+                      type="button"
+                      key={n}
+                      onClick={() => set('rpe', rpeInt === n ? '' : n)}
+                      className={`flex-1 py-2 rounded text-xs font-bold transition-colors ${
+                        rpeInt === n
+                          ? n >= 9 ? 'bg-red-500 text-white'
+                            : n >= 7 ? 'bg-yellow-500 text-black'
+                            : 'bg-green-500 text-white'
+                          : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {rpeInt != null ? (
+                  <p className="text-xs text-muted-foreground">{RPE_LABELS[rpeInt]}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">7 = threshold pace · 8 = race pace · 9 = interval pace</p>
+                )}
               </div>
+
+              {/* Volume */}
+              <div className="space-y-2">
+                <Label>Volume — how much?</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['Low', 'Medium', 'High'].map(v => (
+                    <button
+                      type="button"
+                      key={v}
+                      onClick={() => set('volume', form.volume === v ? '' : v)}
+                      className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                        form.volume === v
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:bg-secondary text-muted-foreground'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {VOLUME_DESCRIPTIONS[form.volume] || 'Low = could have gone longer · High = depleted from quantity'}
+                </p>
+              </div>
+
+              {/* Session Load — calculated */}
+              {sessionLoad != null && (
+                <div className="flex items-center justify-between py-2.5 px-4 rounded-lg bg-secondary/50">
+                  <div>
+                    <p className="text-sm font-medium">Session Load</p>
+                    <p className="text-xs text-muted-foreground">RPE {rpeInt} × {form.duration} min</p>
+                  </div>
+                  <span className="text-2xl font-bold text-primary">{sessionLoad}</span>
+                </div>
+              )}
             </div>
           )}
 

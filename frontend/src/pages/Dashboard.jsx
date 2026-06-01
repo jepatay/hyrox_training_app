@@ -55,6 +55,9 @@ export default function Dashboard() {
   const avgDuration = weeklySessions.length
     ? Math.round(weeklySessions.reduce((s, x) => s + (x.duration || 0), 0) / weeklySessions.length)
     : null;
+  const weeklyLoad = weeklySessions.reduce((sum, s) => {
+    return sum + (s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0));
+  }, 0);
 
   const loadData = buildWeeklyLoad(sessions);
 
@@ -103,14 +106,14 @@ export default function Dashboard() {
         <StatCard icon={MapPin}      label="Weekly Run"   value={`${weeklyRunKm.toFixed(1)} km`} />
         <StatCard icon={TrendingUp}  label="This Month"   value={`${monthlySessions.length} sessions`} />
         <StatCard icon={Target}      label="Objectives"   value={`${objectives.length} total`} sub={`${upcomingObjs.length} upcoming`} />
-        <StatCard icon={Clock}       label="Avg Session"  value={avgDuration ? `${avgDuration} min` : '—'} sub="this week" />
+        <WeeklyLoadCard load={weeklyLoad} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Training load chart — stacked by RPE intensity */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Training Load — Last 8 Weeks</CardTitle>
+            <CardTitle className="text-sm">Session Load — Last 8 Weeks</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             {loadData.every(w => w.easy + w.moderate + w.hard + w.noRpe === 0) ? (
@@ -290,6 +293,33 @@ function StatCard({ icon: Icon, label, value, sub }) {
   );
 }
 
+function WeeklyLoadCard({ load }) {
+  const { color, label } = load >= 2000
+    ? { color: 'text-amber-400', label: 'High — monitor recovery' }
+    : load >= 1200
+    ? { color: 'text-blue-400', label: 'Peak prep range' }
+    : load >= 800
+    ? { color: 'text-green-400', label: 'Optimal base' }
+    : { color: 'text-muted-foreground', label: load > 0 ? 'Low load' : 'No load data' };
+
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 bg-primary/10 rounded-md shrink-0">
+            <Activity className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground leading-none mb-0.5">Weekly Load</p>
+            <p className={`text-sm font-bold leading-none ${color}`}>{load > 0 ? load : '—'}</p>
+            <p className="text-xs text-muted-foreground leading-none mt-0.5">{label}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function buildWeeklyLoad(sessions) {
   const weeks = {};
   const now = new Date();
@@ -308,10 +338,11 @@ function buildWeeklyLoad(sessions) {
       const key = Object.keys(weeks)[7 - diffWeeks];
       if (key && weeks[key]) {
         const rpe = s.rpe;
-        if (!rpe)        weeks[key].noRpe++;
-        else if (rpe <= 6) weeks[key].easy++;
-        else if (rpe <= 8) weeks[key].moderate++;
-        else               weeks[key].hard++;
+        const load = s.sessionLoad || (rpe && s.duration ? Math.round(rpe * s.duration) : null);
+        if (!rpe)         weeks[key].noRpe += s.duration || 30;
+        else if (rpe <= 6) weeks[key].easy += load || s.duration || 0;
+        else if (rpe <= 8) weeks[key].moderate += load || s.duration || 0;
+        else               weeks[key].hard += load || s.duration || 0;
       }
     }
   });

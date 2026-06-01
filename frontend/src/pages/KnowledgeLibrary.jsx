@@ -8,6 +8,14 @@ import { cn } from '@/lib/utils';
 
 const TREE = [
   {
+    id: 'training_methods',
+    label: 'Training Methods',
+    icon: '📐',
+    children: [
+      { id: 'rpe_system', label: '⚡ RPE & Session Load System' },
+    ],
+  },
+  {
     id: 'running',
     label: 'Running',
     icon: '🏃',

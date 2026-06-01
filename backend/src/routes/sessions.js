@@ -53,12 +53,16 @@ router.post('/', async (req, res) => {
     const {
       date, type, status, isClass, location, equipment,
       exercises, runningDistance, intervals, weights, duration,
-      rpe, notes, coachingFeedback,
+      rpe, volume, notes, coachingFeedback,
     } = req.body;
 
     if (!date || !type) {
       return res.status(400).json({ error: 'date and type are required' });
     }
+
+    const rpeNum = rpe ? Number(rpe) : null;
+    const durNum = duration ? Number(duration) : null;
+    const sessionLoad = rpeNum && durNum ? Math.round(rpeNum * durNum) : null;
 
     const now = admin.firestore.FieldValue.serverTimestamp();
     const ref = await collections.sessions().add({
@@ -72,8 +76,10 @@ router.post('/', async (req, res) => {
       runningDistance: runningDistance || null,
       intervals: intervals || [],
       weights: weights || null,
-      duration: duration || null,
-      rpe: rpe || null,
+      duration: durNum,
+      rpe: rpeNum,
+      volume: volume || null,
+      sessionLoad,
       notes: notes || '',
       coachingFeedback: coachingFeedback || null,
       createdAt: now,
@@ -96,6 +102,10 @@ router.put('/:id', async (req, res) => {
     const updates = { ...req.body, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     delete updates.id;
     delete updates.createdAt;
+    // Recalculate sessionLoad whenever rpe or duration is present in the update
+    const rpeNum = updates.rpe ? Number(updates.rpe) : null;
+    const durNum = updates.duration ? Number(updates.duration) : null;
+    updates.sessionLoad = rpeNum && durNum ? Math.round(rpeNum * durNum) : null;
     await collections.sessions().doc(req.params.id).update(updates);
     const updated = docToObj(await collections.sessions().doc(req.params.id).get());
     res.json(updated);

@@ -6,7 +6,7 @@ const router = Router();
 
 // Knowledge sections relevant per focus / equipment
 function knowledgeIdsForSuggestion(focus, equipment) {
-  const ids = ['race_strategy'];
+  const ids = ['race_strategy', 'rpe_system'];
   const focusMap = {
     running:       ['running', 'running__pace_zones', 'running__key_sessions', 'running__elevation', 'running__weight_vest'],
     intervals:     ['running', 'running__pace_zones', 'running__key_sessions', 'running__elevation'],

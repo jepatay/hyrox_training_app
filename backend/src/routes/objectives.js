@@ -28,8 +28,8 @@ async function buildReadiness(objective) {
   const profile = profileDoc.exists ? profileDoc.data() : {};
 
   const knowledgeIds = isHyrox
-    ? ['race_strategy', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running', 'running']
-    : ['race_strategy', 'running', 'running__pace_zones', 'running__race_prep'];
+    ? ['race_strategy', 'rpe_system', 'hyrox__skierg', 'hyrox__sled_push', 'hyrox__sled_pull', 'hyrox__burpee_broad_jump', 'hyrox__rowing', 'hyrox__farmers_carry', 'hyrox__sandbag_lunges', 'hyrox__wall_balls', 'hyrox__running', 'running']
+    : ['race_strategy', 'rpe_system', 'running', 'running__pace_zones', 'running__race_prep'];
 
   // Fetch transferability + readiness scale separately — no truncation, high-priority context
   const [knowledgeDocs, transferDoc, scaleDoc] = await Promise.all([

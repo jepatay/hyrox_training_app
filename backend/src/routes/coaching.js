@@ -7,7 +7,7 @@ const router = Router();
 
 // Knowledge sections relevant per session type
 function knowledgeIdsForSession(type) {
-  const ids = ['race_strategy'];
+  const ids = ['race_strategy', 'rpe_system'];
   switch (type) {
     case 'running':
       ids.push('running', 'running__pace_zones', 'running__key_sessions', 'running__race_prep', 'running__elevation', 'running__weight_vest');

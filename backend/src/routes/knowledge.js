@@ -6,6 +6,86 @@ const router = Router();
 
 // Default content returned when a doc has never been saved
 const DEFAULTS = {
+  rpe_system: `# RPE & Session Load System
+
+## The three-metric system
+Every session is logged with three values:
+1. **Intensity RPE** — how hard was the effort (1–10, integer, anchored scale)
+2. **Volume** — how much total work was done (Low / Medium / High)
+3. **Session Load** — calculated automatically: Intensity RPE × Duration in minutes
+
+Examples:
+- 70 min session, RPE 6, Volume High → Load = 420
+- 20 min session, RPE 9, Volume Low → Load = 180
+- 45 min session, RPE 7, Volume Medium → Load = 315
+
+Same RPE, different load. Same load, different stimulus. Both dimensions tracked.
+
+---
+
+## Intensity RPE — anchored scale
+
+RPE 1–2 — Recovery: effortless, Zone 1. Easy walk, light mobility.
+RPE 3–4 — Easy: comfortable, conversational. Zone 2. Long easy run, Zone 2 cycling.
+RPE 5–6 — Moderate: noticeable, short sentences, Zone 3. Approaching threshold.
+RPE 7 — Hard (threshold): uncomfortable but controlled. Zone 4. 25 min tempo run, sustained sled push at race weight.
+RPE 8 — Very hard (race pace): hard to maintain. Zone 4–5. HYROX race effort, 5K at target pace.
+RPE 9 — Near maximal (interval pace): counting reps to get through. Zone 5. 400m–1km intervals.
+RPE 10 — Maximal: absolute limit, 2–3 min max. True all-out sprint or test only.
+
+**Anchors: RPE 7 = threshold = Zone 4. RPE 8 = race pace. RPE 9 = interval pace. Always.**
+
+---
+
+## Volume scale
+
+**Low** — under ~30 min of actual work. Stopped because it was hard, not too much. Example: 20 min interval session.
+**Medium** — 30–60 min of work. Moderate accumulation. Example: 45 min station circuit, 5 km run.
+**High** — 60+ min sustained work OR high total rep count. Body depleted from quantity. Example: 70 min Zone 2 run, full HYROX simulation.
+
+---
+
+## Session Load zones
+
+- Under 150 → Recovery session (active rest)
+- 150–250 → Light training load
+- 250–400 → Moderate training load
+- 400–550 → High training load
+- 550+ → Very high training load — flag for recovery monitoring
+
+## Weekly load zones
+
+- Under 800 → Low (risk of detraining if sustained 2+ weeks)
+- 800–1200 → Optimal base
+- 1200–2000 → Peak prep range
+- Above 2000 → Flag recovery risk
+
+## Spike rule
+If weekly load exceeds previous week by more than 30%: flag overload risk.
+
+---
+
+## Session profiles — intensity × volume interactions
+
+HIGH intensity + LOW volume (RPE 9, 20 min, Load ~180): neuromuscular power. Moderate recovery cost.
+HIGH intensity + HIGH volume (RPE 8, 70 min, Load ~560): race endurance. VERY HIGH recovery cost — flag.
+LOW intensity + HIGH volume (RPE 4, 75 min, Load ~300): aerobic base. Low recovery cost.
+LOW intensity + LOW volume (RPE 3, 20 min, Load ~60): recovery only. Do not count toward weekly training load.
+
+---
+
+## AI scoring rules
+
+When a session has RPE + Volume + Duration:
+1. Calculate Session Load = RPE × Duration
+2. Identify the intensity × volume profile
+3. Flag recovery need if HIGH intensity + HIGH volume
+4. Accumulate weekly load and flag if above 2000 or spiking >30%
+5. Use Intensity RPE to calibrate readiness contributions: RPE 9 on sled push = near-maximal, high readiness contribution. RPE 5 = partial contribution.
+
+If RPE 10 is logged for a standard session: flag "RPE 10 is reserved for true maximal efforts — confirm this was not a standard training session."`,
+
+
   hyrox__readiness_scale: `# HYROX Station Readiness Scale
 
 ## What each score means
