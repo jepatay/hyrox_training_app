@@ -51,7 +51,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const {
-      date, type, status, isClass, location, equipment,
+      date, type, status, isClass, weightVest, location, equipment,
       exercises, runningDistance, intervals, weights, duration,
       rpe, volume, notes, coachingFeedback,
     } = req.body;
@@ -70,6 +70,7 @@ router.post('/', async (req, res) => {
       type,
       status: status || 'completed',
       isClass: isClass || false,
+      weightVest: weightVest || false,
       location: location || null,
       equipment: equipment || null,
       exercises: exercises || [],

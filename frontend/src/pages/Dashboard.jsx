@@ -214,13 +214,18 @@ export default function Dashboard() {
                           {session.runningDistance && ` · ${session.runningDistance} km`}
                         </p>
                       </div>
-                      {session.rpe != null && (
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                          session.rpe >= 9 ? 'text-red-400 bg-red-400/10' :
-                          session.rpe >= 7 ? 'text-yellow-400 bg-yellow-400/10' :
-                          'text-green-400 bg-green-400/10'
-                        }`}>RPE {session.rpe}</span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {session.weightVest && (
+                          <span className="text-xs text-orange-400">🦺</span>
+                        )}
+                        {session.rpe != null && (
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                            session.rpe >= 9 ? 'text-red-400 bg-red-400/10' :
+                            session.rpe >= 7 ? 'text-yellow-400 bg-yellow-400/10' :
+                            'text-green-400 bg-green-400/10'
+                          }`}>RPE {session.rpe}</span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

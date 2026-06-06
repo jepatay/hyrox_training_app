@@ -49,6 +49,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
     runningDistance: session?.runningDistance || '',
     rpe: session?.rpe != null ? session.rpe : '',
     volume: session?.volume || '',
+    weightVest: session?.weightVest || false,
     notes: session?.notes || '',
     exercises: session?.exercises || [],
   });
@@ -189,18 +190,32 @@ export default function SessionForm({ session, onClose, onSaved }) {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => set('isClass', !form.isClass)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors w-fit ${
-              form.isClass
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border hover:bg-secondary text-muted-foreground'
-            }`}
-          >
-            <span>👥</span>
-            <span className="text-xs">Class / Group Session</span>
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => set('isClass', !form.isClass)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                form.isClass
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border hover:bg-secondary text-muted-foreground'
+              }`}
+            >
+              <span>👥</span>
+              <span className="text-xs">Class / Group Session</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => set('weightVest', !form.weightVest)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                form.weightVest
+                  ? 'border-orange-500 bg-orange-500/10 text-orange-400'
+                  : 'border-border hover:bg-secondary text-muted-foreground'
+              }`}
+            >
+              <span>🦺</span>
+              <span className="text-xs">Weight Vest — 9 kg</span>
+            </button>
+          </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">

@@ -259,6 +259,11 @@ export default function TrainingLog() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{session.stravaActivityName || typeConfig.label}</span>
                         {session.status === 'planned' && <Badge variant="outline" className="text-xs">Planned</Badge>}
+                        {session.weightVest && (
+                          <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-400">
+                            🦺 Vest
+                          </Badge>
+                        )}
                         {session.syncedFromStrava && (
                           <Badge variant="outline" className="text-xs border-orange-500/40 text-orange-400 gap-1">
                             <span className="font-bold">S</span> Strava

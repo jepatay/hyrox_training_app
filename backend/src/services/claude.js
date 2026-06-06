@@ -62,7 +62,13 @@ function ageFromBirthday(birthday) {
 export async function generateCoachingFeedback({ session, recentSessions, objectives, venueNotes, knowledge }) {
   const recentSummary = recentSessions
     .slice(0, 7)
-    .map(s => `- ${s.type} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'})`)
+    .map(s => {
+      const vest = s.weightVest ? ' 🦺+9kg' : '';
+      const vol = s.volume ? ` Vol:${s.volume}` : '';
+      const load = s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : null);
+      const loadStr = load ? ` Load:${load}` : '';
+      return `- ${s.type}${vest} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'}${vol}${loadStr})`;
+    })
     .join('\n') || 'No recent sessions';
 
   const objSummary = objectives
@@ -91,8 +97,9 @@ Today's date: ${today}
 Session logged (${whenLabel} — ${sessionDate}):
 - Type: ${session.type}
 - Class/group session: ${session.isClass ? 'Yes — structure set by instructor' : 'No — self-directed'}
+- Weight vest (9 kg): ${session.weightVest ? 'Yes — worn during session' : 'No'}
 - Duration: ${session.duration || '?'} minutes
-- RPE: ${session.rpe || '?'}/10
+- RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}${session.sessionLoad ? ` | Session Load: ${session.sessionLoad}` : ''}
 - Feeling: ${session.feeling || 'not specified'}
 - Notes: ${session.notes || 'none'}
 - Venue notes: ${venueNotes || 'none'}
@@ -116,7 +123,10 @@ Give 3-4 sentences of sharp, specific, personal coaching feedback. Reference the
 export async function generateTrainingSuggestion({ location, equipment, focus, timeAvailable, recentSessions, objectives, profile, notes, venueName, venueNotes, records, knowledge }) {
   const recentSummary = recentSessions
     .slice(0, 5)
-    .map(s => `- ${s.type} (${s.duration || '?'} min, ${s.date?.slice(0, 10) || '?'})`)
+    .map(s => {
+      const vest = s.weightVest ? ' +vest' : '';
+      return `- ${s.type}${vest} (${s.duration || '?'} min${s.rpe ? `, RPE ${s.rpe}` : ''}, ${s.date?.slice(0, 10) || '?'})`;
+    })
     .join('\n') || 'No recent history';
 
   const objSummary = objectives
@@ -296,7 +306,11 @@ export async function generateReadinessAnalysis({ objective, recentSessions, rec
 
   const recentSummary = recentSessions.slice(0, 20)
     .map(s => {
-      const header = `[${s.date?.slice(0, 10) || '?'}] ${s.type} — ${s.duration || '?'} min${s.rpe != null ? `, RPE ${s.rpe}` : ''}`;
+      const vest = s.weightVest ? ' [WEIGHT VEST 9kg]' : '';
+      const vol = s.volume ? `, Vol:${s.volume}` : '';
+      const load = s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : null);
+      const loadStr = load ? `, Load:${load}` : '';
+      const header = `[${s.date?.slice(0, 10) || '?'}] ${s.type}${vest} — ${s.duration || '?'} min${s.rpe != null ? `, RPE ${s.rpe}${vol}${loadStr}` : ''}`;
       const rawNotes = s.notes?.trim();
       const notes = rawNotes ? `  → ${rawNotes.slice(0, 300)}${rawNotes.length > 300 ? '…' : ''}` : '';
       return notes ? `${header}\n${notes}` : header;
