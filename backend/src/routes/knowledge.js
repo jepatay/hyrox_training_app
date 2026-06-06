@@ -227,17 +227,62 @@ Indoor stairs do not generate GPS elevation data. Each floor ≈ 3–4 m. A typi
 - Cardiovascular load is very high for moderate pace: a stair session at RPE 7 is physiologically equivalent to a hard running session at RPE 8–9
 - Eccentric load on descent stresses quads — recovery may be needed after hard stair sessions
 
+---
+
+## Stair technique variants and their demands
+
+There are four primary technique combinations, each with a different training stimulus:
+
+**Run + 1 step at a time**
+Highest cardiovascular demand. Fast turnover, light foot contacts, calves and hip flexors heavily loaded. Close to sprint intervals in terms of heart rate response. Short bouts only — unsustainable for long duration. Best for speed-endurance and cardiovascular peak.
+
+**Run + 2 steps at a time**
+High power output per stride. Each step requires a full extension push-off — glutes and quads loaded maximally. Slower cadence than 1-step running but much greater force per contact. Excellent for leg drive development. More muscular fatigue than cardiovascular stress per rep.
+
+**Walk + 1 step at a time**
+Controlled, steady-state aerobic work. Lower cardiovascular ceiling but allows sustained duration (30–60+ min). Accumulates significant total volume. Good for base building and active recovery between harder bouts. Hip flexors and calves still loaded.
+
+**Walk + 2 steps at a time**
+The single highest muscular load variant. Each step is a deep, unilateral lunge under bodyweight (or vest weight). Extreme quad, glute, and hip extension demand. Similar stimulus to weighted walking lunges. Low pace → low cardiovascular stress, but muscular fatigue accumulates quickly. This is the most direct HYROX sandbag lunges transfer.
+
+---
+
+## Technique × vest matrix
+
+Vest amplifies the muscular demand of every variant, especially the power-based ones:
+
+| Technique | No vest | With 9 kg vest |
+|---|---|---|
+| Run + 1 step | Cardio-dominant, moderate leg | Very high cardio + leg |
+| Run + 2 steps | High power, moderate cardio | Near-maximal power demand |
+| Walk + 1 step | Aerobic base, low fatigue | Moderate load, sustainable |
+| Walk + 2 steps | High muscular (lunge pattern) | Extreme muscular load — treat like heavy strength session |
+
+**Walk + 2 steps + vest is the hardest muscular variant.** Recovery cost approaches that of a heavy leg strength session. Flag this combination when present in session notes — do not underestimate its fatigue contribution.
+
+**Run + 2 steps + vest** produces near-maximal leg power output and very high cardiovascular stress simultaneously. One of the most demanding HYROX-specific training stimuli available.
+
+---
+
+## Interpreting session notes
+
+When session notes describe stair technique, use the matrix above to assess load:
+- "Running stairs" without qualifier → assume 1 step unless noted, high cardio demand
+- "Taking 2 steps" → higher muscular load, lower rep count, more recovery needed
+- "Walked up" → base/recovery stimulus unless combined with vest + 2 steps
+- Vest mentioned + any technique → raise estimated RPE by 1–2 points vs unloaded equivalent
+
 ## Weight vest on stairs
 A 9 kg vest during stairs is one of the most demanding training modalities in this athlete's programme. Do not underestimate the load. A 25-min stair session with vest at RPE 8 represents very significant training stress.
 
 ## HYROX transferability
 Stairs are excellent preparation for:
 - Running transitions (leg endurance under fatigue)
-- Sled push / pull (leg drive and hip extension)
-- Walking lunges (step pattern and load tolerance)
+- Sled push / pull (leg drive and hip extension) — especially run+2 steps
+- Walking lunges (step pattern and load tolerance) — especially walk+2 steps+vest
 
 ## Duration is the primary metric
-Since distance and elevation are unreliable for stairs, use duration + RPE as the primary load indicators.`,
+Since distance and elevation are unreliable for stairs, use duration + RPE + technique variant as the primary load indicators.`,
 
   cycling: `# Cycling — General Context
 
