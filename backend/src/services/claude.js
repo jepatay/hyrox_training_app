@@ -225,44 +225,89 @@ Apply the change and return the updated workout. Keep the same format and concis
   return chat(prompt, 600);
 }
 
-export async function generateMonthlyReport({ sessions, objectives, month, year }) {
-  const breakdown = sessions.reduce((acc, s) => {
-    acc[s.type] = (acc[s.type] || 0) + 1;
-    return acc;
-  }, {});
+export async function generateTrainingReview({ sessions, objectives, startDate, endDate }) {
+  const today = new Date().toISOString().slice(0, 10);
 
-  const totalDistance = sessions.reduce((sum, s) => sum + (s.runningDistance || 0), 0);
-  const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
-  const avgRpe = sessions.filter(s => s.rpe).length
-    ? (sessions.reduce((sum, s) => sum + (s.rpe || 0), 0) / sessions.filter(s => s.rpe).length).toFixed(1)
-    : 'N/A';
+  // Detailed session log — most recent first
+  const sessionLog = [...sessions].reverse().map(s => {
+    const vest = s.weightVest ? ' [VEST 9kg]' : '';
+    const vol = s.volume ? ` Vol:${s.volume}` : '';
+    const load = s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : null);
+    const loadStr = load ? ` Load:${load}` : '';
+    const notes = s.notes?.trim() ? `\n    → ${s.notes.trim().slice(0, 250)}` : '';
+    return `[${s.date?.slice(0, 10)}] ${s.type}${vest} — ${s.duration || '?'} min${s.rpe != null ? `, RPE ${s.rpe}${vol}${loadStr}` : ''}${notes}`;
+  }).join('\n') || 'No sessions in this window';
 
-  const objSummary = objectives
-    .map(o => `- ${o.name} [${o.priority}] — ${o.type} on ${o.date?.slice(0, 10) || '?'}`)
-    .join('\n') || 'None';
+  // Upcoming objectives — sorted by date, with readiness data if available
+  const hyroxObjs = objectives.filter(o => o.type === 'hyrox').sort((a, b) => new Date(a.date) - new Date(b.date));
+  const otherObjs = objectives.filter(o => o.type !== 'hyrox').sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  const prompt = `You are an expert Hyrox and running coach. Generate a monthly training report.
+  const formatObj = (o) => {
+    const daysAway = Math.round((new Date(o.date) - new Date(today)) / (1000 * 60 * 60 * 24));
+    let line = `- ${o.name} [${o.priority}] — ${o.type} on ${o.date?.slice(0, 10)} (${daysAway} days away)`;
+    if (o.targetTime) line += ` — target: ${o.targetTime}`;
+    if (o.readiness?.score) {
+      line += `\n  Current readiness: ${o.readiness.score}/10`;
+      if (o.readiness.radarData?.length) {
+        const stationScores = o.readiness.radarData
+          .filter(d => d.key !== 'overall')
+          .map(d => `${d.label}: ${d.readiness}/10`)
+          .join(', ');
+        line += `\n  Station scores: ${stationScores}`;
+      }
+      if (o.readiness.summary) line += `\n  AI summary: ${o.readiness.summary.slice(0, 300)}`;
+    }
+    return line;
+  };
 
-Month: ${month}/${year}
-Total sessions: ${sessions.length}
-Total duration: ${Math.round(totalDuration / 60)} hours
-Total running distance: ${totalDistance.toFixed(1)} km
-Average RPE: ${avgRpe}
-Session breakdown: ${JSON.stringify(breakdown, null, 2)}
+  const hyroxBlock = hyroxObjs.length
+    ? `HYROX objectives:\n${hyroxObjs.map(formatObj).join('\n')}`
+    : 'No upcoming HYROX objectives.';
 
-Upcoming objectives:
-${objSummary}
+  const otherBlock = otherObjs.length
+    ? `Other objectives:\n${otherObjs.map(formatObj).join('\n')}`
+    : '';
 
-Provide:
-1. **Monthly Summary**: 2-3 sentences on overall training volume and balance
-2. **Strengths**: 2-3 bullet points of what went well
-3. **Areas to Improve**: 2-3 bullet points on weaknesses or gaps
-4. **Recommendations for Next Month**: 3-4 specific, actionable training recommendations
-5. **Race Prep Focus**: specific advice based on upcoming objectives
+  const totalKm = sessions.reduce((sum, s) => sum + (s.runningDistance || 0), 0);
+  const totalMin = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+  const totalLoad = sessions.reduce((sum, s) =>
+    sum + (s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0)), 0);
 
-Be specific and motivating.`;
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. Your job is to give a sharp, objective-driven 30-day review — not generic advice.
 
-  return chat(prompt, 800);
+Today: ${today}
+Review window: ${startDate} → ${endDate} (last 30 days)
+
+TRAINING WINDOW SUMMARY:
+- ${sessions.length} sessions completed
+- ${Math.round(totalMin / 60 * 10) / 10} hours total training
+- ${totalKm.toFixed(1)} km running
+- Total session load: ${totalLoad || 'not tracked'}
+
+UPCOMING OBJECTIVES:
+${hyroxBlock}
+${otherBlock}
+
+FULL SESSION LOG (last 30 days, most recent first):
+${sessionLog}
+
+---
+
+Write a coaching review with exactly these four sections. Be specific, direct, and reference actual session data. No generic encouragement. No advice about objectives that are already past.
+
+### Training Overview
+2–3 sentences on what the last 30 days actually looked like: volume, intensity mix, consistency. Reference the data.
+
+### Where You're Well Prepared
+For each upcoming HYROX: which stations or capabilities are genuinely strong based on recent training? Reference specific sessions or patterns that back this up. If readiness scores are available, use them to anchor the assessment.
+
+### Focus Areas — Next 30 Days
+Which stations or physical qualities are the biggest gaps relative to the upcoming HYROX? Be direct. Rank the top 3 priorities. Reference the station readiness scores if present.
+
+### Priority Sessions — Next 30 Days
+3–4 specific, concrete sessions to do in the next 30 days that address the gaps above. Name the session type, effort level (RPE), approximate duration, and why it directly helps.`;
+
+  return chat(prompt, 1000);
 }
 
 // Extracts structured exercise/workout data from session notes in the background

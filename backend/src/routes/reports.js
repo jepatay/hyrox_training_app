@@ -1,21 +1,23 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
-import { generateMonthlyReport } from '../services/claude.js';
+import { generateTrainingReview } from '../services/claude.js';
 
 const router = Router();
 
-// GET monthly report data + AI analysis
+// GET rolling 30-day training review
 router.get('/monthly', async (req, res) => {
   try {
-    const month = parseInt(req.query.month) || new Date().getMonth() + 1;
-    const year = parseInt(req.query.year) || new Date().getFullYear();
+    // Default end date = today; allow scrolling back via ?endDate=YYYY-MM-DD
+    const endDate = req.query.endDate || new Date().toISOString().slice(0, 10);
+    const startDate = new Date(endDate + 'T00:00:00Z');
+    startDate.setUTCDate(startDate.getUTCDate() - 30);
+    const startDateStr = startDate.toISOString().slice(0, 10);
 
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    const today = new Date().toISOString().slice(0, 10);
 
     const [sessionsSnap, objectivesSnap] = await Promise.all([
       collections.sessions()
-        .where('date', '>=', startDate)
+        .where('date', '>', startDateStr)
         .where('date', '<=', endDate)
         .orderBy('date', 'asc')
         .get(),
@@ -23,42 +25,50 @@ router.get('/monthly', async (req, res) => {
     ]);
 
     const sessions = sessionsSnap.docs.map(docToObj).filter(Boolean);
-    const objectives = objectivesSnap.docs.map(docToObj).filter(Boolean);
+    const allObjectives = objectivesSnap.docs.map(docToObj).filter(Boolean);
+
+    // Only upcoming objectives are relevant for forward-looking analysis
+    const upcomingObjectives = allObjectives.filter(o => o.date >= today);
 
     // Compute stats
-    const totalDistance = sessions.reduce((sum, s) => sum + (s.runningDistance || 0), 0);
-    const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
-    const typeBreakdown = sessions.reduce((acc, s) => {
+    const completedSessions = sessions.filter(s => s.status !== 'planned');
+    const totalDistance = completedSessions.reduce((sum, s) => sum + (s.runningDistance || 0), 0);
+    const totalDuration = completedSessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+    const totalLoad = completedSessions.reduce((sum, s) =>
+      sum + (s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0)), 0);
+    const typeBreakdown = completedSessions.reduce((acc, s) => {
       acc[s.type] = (acc[s.type] || 0) + 1;
       return acc;
     }, {});
-    const feelingBreakdown = sessions.reduce((acc, s) => {
-      if (s.feeling) acc[s.feeling] = (acc[s.feeling] || 0) + 1;
-      return acc;
-    }, {});
-    const avgRpe = sessions.filter(s => s.rpe).length
-      ? sessions.reduce((sum, s) => sum + (s.rpe || 0), 0) / sessions.filter(s => s.rpe).length
+    const rpeSessions = completedSessions.filter(s => s.rpe);
+    const avgRpe = rpeSessions.length
+      ? rpeSessions.reduce((sum, s) => sum + s.rpe, 0) / rpeSessions.length
       : null;
 
-    // Weekly breakdown
-    const weeklyData = buildWeeklyData(sessions, month, year);
+    // Weekly breakdown (4 weeks within window)
+    const weeklyData = buildWeeklyData(completedSessions, startDateStr, endDate);
 
     // Generate AI report
-    const aiReport = await generateMonthlyReport({ sessions, objectives, month, year });
+    const aiReport = await generateTrainingReview({
+      sessions: completedSessions,
+      objectives: upcomingObjectives,
+      startDate: startDateStr,
+      endDate,
+    });
 
     res.json({
-      month,
-      year,
+      startDate: startDateStr,
+      endDate,
       stats: {
-        totalSessions: sessions.length,
+        totalSessions: completedSessions.length,
         totalDistance: Math.round(totalDistance * 10) / 10,
         totalDuration: Math.round(totalDuration),
+        totalLoad: totalLoad || null,
         avgRpe: avgRpe ? Math.round(avgRpe * 10) / 10 : null,
         typeBreakdown,
-        feelingBreakdown,
       },
       weeklyData,
-      sessions,
+      sessions: completedSessions,
       aiReport,
     });
   } catch (err) {
@@ -67,19 +77,36 @@ router.get('/monthly', async (req, res) => {
   }
 });
 
-function buildWeeklyData(sessions, month, year) {
-  const weeks = {};
+function buildWeeklyData(sessions, startDate, endDate) {
+  const end = new Date(endDate + 'T00:00:00Z');
+  const weeks = [];
+  for (let i = 3; i >= 0; i--) {
+    const weekEnd = new Date(end);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() - i * 7);
+    const weekStart = new Date(weekEnd);
+    weekStart.setUTCDate(weekStart.getUTCDate() - 6);
+    const label = `${weekStart.getUTCDate()}/${weekStart.getUTCMonth() + 1}`;
+    weeks.push({
+      week: label,
+      sessions: 0,
+      distance: 0,
+      duration: 0,
+      load: 0,
+      _start: weekStart.toISOString().slice(0, 10),
+      _end: weekEnd.toISOString().slice(0, 10),
+    });
+  }
   sessions.forEach(s => {
     if (!s.date) return;
-    const d = new Date(s.date);
-    const weekNum = Math.ceil(d.getDate() / 7);
-    const key = `Week ${weekNum}`;
-    if (!weeks[key]) weeks[key] = { week: key, sessions: 0, distance: 0, duration: 0 };
-    weeks[key].sessions++;
-    weeks[key].distance += s.runningDistance || 0;
-    weeks[key].duration += s.duration || 0;
+    const bucket = weeks.find(w => s.date >= w._start && s.date <= w._end);
+    if (bucket) {
+      bucket.sessions++;
+      bucket.distance += s.runningDistance || 0;
+      bucket.duration += s.duration || 0;
+      bucket.load += s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : 0);
+    }
   });
-  return Object.values(weeks);
+  return weeks.map(({ _start, _end, ...w }) => ({ ...w, distance: Math.round(w.distance * 10) / 10 }));
 }
 
 export default router;

@@ -82,7 +82,7 @@ export const profileApi = {
 };
 
 export const reportsApi = {
-  monthly: (month, year) => api.get(`/api/reports/monthly?month=${month}&year=${year}`),
+  monthly: (_month, _year, endDate) => api.get(`/api/reports/monthly${endDate ? `?endDate=${endDate}` : ''}`),
 };
 
 export const venuesApi = {
