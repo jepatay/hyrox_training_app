@@ -115,7 +115,61 @@ ${knowledgeBlock}
 
 Also draw on current sports science and best practices for HYROX and endurance training to enrich your feedback.
 
-Give 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.`;
+Write 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.
+
+Then, if the session notes are missing context that would change your feedback (e.g. how a specific movement felt, the load/weight used, fatigue level, technique cues), ask 1-2 direct, specific follow-up questions to fill that gap. Only ask if genuinely useful — skip if the notes are already detailed enough. Do not ask generic questions like "how did it go".
+
+Return plain text: the feedback first, then any follow-up questions on their own lines.`;
+
+  return chat(prompt, 450);
+}
+
+export async function generateFinalCoachingNote({ session, recentSessions, objectives, venueNotes, knowledge, initialMessage, userReply }) {
+  const recentSummary = recentSessions
+    .slice(0, 7)
+    .map(s => {
+      const vest = s.weightVest ? ' 🦺+9kg' : '';
+      const vol = s.volume ? ` Vol:${s.volume}` : '';
+      const load = s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : null);
+      const loadStr = load ? ` Load:${load}` : '';
+      return `- ${s.type}${vest} on ${s.date?.slice(0, 10) || 'unknown'} (${s.duration || '?'} min, RPE ${s.rpe || '?'}${vol}${loadStr})`;
+    })
+    .join('\n') || 'No recent sessions';
+
+  const objSummary = objectives
+    .slice(0, 5)
+    .map(o => `- ${o.name} [${o.priority}] — ${o.type} on ${o.date?.slice(0, 10) || '?'}`)
+    .join('\n') || 'No objectives set';
+
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    : '';
+
+  const sessionDate = session.date?.slice(0, 10) || 'unknown';
+
+  const prompt = `You are this athlete's dedicated personal HYROX and running coach. You already gave initial feedback on a session and asked follow-up questions. The athlete has now replied with more context. Write a final, consolidated coaching note that incorporates their reply.
+
+Session logged (${sessionDate}):
+- Type: ${session.type}
+- Duration: ${session.duration || '?'} minutes
+- RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}${session.sessionLoad ? ` | Session Load: ${session.sessionLoad}` : ''}
+- Notes: ${session.notes || 'none'}
+- Venue notes: ${venueNotes || 'none'}
+
+Recent training (last 7 days):
+${recentSummary}
+
+Upcoming objectives:
+${objSummary}
+${knowledgeBlock}
+
+Your initial feedback to the athlete:
+"${initialMessage}"
+
+Athlete's reply:
+"${userReply}"
+
+Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific. Do not ask further questions. This is the closing word on this session.`;
 
   return chat(prompt, 450);
 }
@@ -528,4 +582,60 @@ Return a JSON object where each value is 0-10 (10 = urgently needs more focus, 0
 Base your assessment on training frequency and type, known weaknesses, upcoming race goals, and typical athlete profiles. Be honest.`;
 
   return chatJson(prompt, 400);
+}
+
+const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
+
+export async function generateStationScores({ session, knowledge }) {
+  const exercises = session.extractedExercises?.exercises?.length
+    ? session.extractedExercises.exercises
+        .map(e => {
+          const sets = e.sets ? `${e.sets}x${e.reps || '?'}` : (e.reps ? `${e.reps} reps` : '');
+          const weight = e.weightKg ? `@ ${e.weightKg}kg` : '';
+          const dist = e.distanceM ? `${e.distanceM}m` : '';
+          return `- ${e.name}${sets ? ` ${sets}` : ''}${weight ? ` ${weight}` : ''}${dist ? ` ${dist}` : ''}${e.notes ? ` (${e.notes})` : ''}`;
+        })
+        .join('\n')
+    : null;
+
+  const notesBlock = session.notes?.trim() ? `\nSession notes: ${session.notes.trim().slice(0, 600)}` : '';
+
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nExercise Transferability knowledge library (use this to map logged exercises to HYROX stations):\n---\n${knowledge}\n---`
+    : '';
+
+  const prompt = `You are an expert HYROX coach. Analyze this training session and score how much it contributed to each of the 9 HYROX stations, on a scale of 1-5.
+
+Session type: ${session.type}
+Duration: ${session.duration || '?'} minutes
+RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}
+${exercises ? `Logged exercises (with sets x reps, weights, distances):\n${exercises}` : 'No structured exercise data extracted — use session notes below.'}${notesBlock}${knowledgeBlock}
+
+Scoring rules:
+- Score 1-5 per station: 1 = no contribution/transfer, 3 = moderate transfer, 5 = direct, high-volume, high-load specific work for that station.
+- Base scores on specificity (does the exercise directly match the station movement pattern?), volume (sets x reps, duration), and load (weight used relative to HYROX competition weights).
+- Use the Exercise Transferability knowledge library above to map logged exercises to the correct stations.
+- Be honest — most sessions will score high on 1-3 stations and low (1-2) on the rest. Do not inflate scores.
+
+Return JSON exactly in this format:
+{
+  "running": <1-5>,
+  "skierg": <1-5>,
+  "sled_push": <1-5>,
+  "sled_pull": <1-5>,
+  "row_erg": <1-5>,
+  "farmers_carry": <1-5>,
+  "sandbag_lunges": <1-5>,
+  "burpee_broad_jump": <1-5>,
+  "wall_balls": <1-5>
+}`;
+
+  const result = await chatJson(prompt, 300);
+  if (!result) return null;
+  const scores = {};
+  for (const key of STATION_KEYS) {
+    const v = Number(result[key]);
+    scores[key] = Number.isFinite(v) ? Math.min(5, Math.max(1, Math.round(v))) : 1;
+  }
+  return scores;
 }

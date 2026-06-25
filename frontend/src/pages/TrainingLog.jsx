@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell, RefreshCw, Link2, Link2Off } from 'lucide-react';
 import SessionForm from '@/components/forms/SessionForm';
+import CoachingThread from '@/components/CoachingThread';
+import StationImpact from '@/components/StationImpact';
 import { parseMarkdown } from '@/lib/utils';
 
 export default function TrainingLog() {
@@ -83,15 +85,28 @@ export default function TrainingLog() {
   }
 
   async function handleGetFeedback(session) {
-    try {
-      toast({ title: 'Generating...', description: 'AI is analyzing your training.' });
-      const { feedback } = await coachingApi.generateFeedback(session.id);
-      setSessions(prev => prev.map(s => s.id === session.id ? { ...s, coachingFeedback: feedback } : s));
-      setExpanded(session.id);
-      toast({ title: 'Coaching feedback ready!' });
-    } catch {
+    toast({ title: 'Generating...', description: 'AI is analyzing your training.' });
+    const [feedbackResult, scoresResult] = await Promise.allSettled([
+      coachingApi.generateFeedback(session.id),
+      coachingApi.generateStationScores(session.id),
+    ]);
+    if (feedbackResult.status === 'rejected' && scoresResult.status === 'rejected') {
       toast({ title: 'Error', description: 'Failed to generate feedback', variant: 'destructive' });
+      return;
     }
+    setSessions(prev => prev.map(s => {
+      if (s.id !== session.id) return s;
+      const updated = { ...s };
+      if (feedbackResult.status === 'fulfilled') updated.coachingThread = feedbackResult.value.coachingThread;
+      if (scoresResult.status === 'fulfilled') updated.stationScores = scoresResult.value.stationScores;
+      return updated;
+    }));
+    setExpanded(session.id);
+    toast({ title: 'Coaching feedback ready!' });
+  }
+
+  function handleThreadUpdate(sessionId, coachingThread) {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, coachingThread } : s));
   }
 
   function handleSaved(session) {
@@ -101,7 +116,7 @@ export default function TrainingLog() {
     });
     setShowForm(false);
     setEditing(null);
-    if (session.coachingFeedback) setExpanded(session.id);
+    if (session.coachingThread) setExpanded(session.id);
     toast({ title: 'Saved!', description: 'Session logged successfully.' });
   }
 
@@ -269,7 +284,7 @@ export default function TrainingLog() {
                             <span className="font-bold">S</span> Strava
                           </Badge>
                         )}
-                        {session.coachingFeedback && (
+                        {session.coachingThread && (
                           <Badge className="text-xs gap-1"><Sparkles className="h-3 w-3" /> Feedback</Badge>
                         )}
                       </div>
@@ -289,7 +304,7 @@ export default function TrainingLog() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {session.status === 'completed' && !session.coachingFeedback && (
+                      {session.status === 'completed' && !session.coachingThread && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -323,14 +338,9 @@ export default function TrainingLog() {
                           {session.equipment && ` · ${session.equipment.replace('_', ' ')}`}
                         </p>
                       )}
-                      {session.coachingFeedback && (
-                        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium text-primary">Coaching Feedback</span>
-                          </div>
-                          <p className="text-sm leading-relaxed">{session.coachingFeedback}</p>
-                        </div>
+                      {session.stationScores && <StationImpact scores={session.stationScores} />}
+                      {session.coachingThread && (
+                        <CoachingThread session={session} onUpdate={handleThreadUpdate} />
                       )}
                     </div>
                   )}

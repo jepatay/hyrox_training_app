@@ -108,15 +108,15 @@ export default function SessionForm({ session, onClose, onSaved }) {
         saved = await sessionsApi.update(session.id, data);
       } else {
         saved = await sessionsApi.create(data);
-        // Auto-generate coaching feedback
+        // Auto-generate coaching thread + station impact scores
         if (form.status === 'completed') {
           setGeneratingFeedback(true);
-          try {
-            const { feedback } = await coachingApi.generateFeedback(saved.id);
-            saved = { ...saved, coachingFeedback: feedback };
-          } catch {
-            // Feedback generation is optional
-          }
+          const [feedbackResult, scoresResult] = await Promise.allSettled([
+            coachingApi.generateFeedback(saved.id),
+            coachingApi.generateStationScores(saved.id),
+          ]);
+          if (feedbackResult.status === 'fulfilled') saved = { ...saved, coachingThread: feedbackResult.value.coachingThread };
+          if (scoresResult.status === 'fulfilled') saved = { ...saved, stationScores: scoresResult.value.stationScores };
           setGeneratingFeedback(false);
         }
       }

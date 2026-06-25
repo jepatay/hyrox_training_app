@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
-import { generateCoachingFeedback } from '../services/claude.js';
+import { generateCoachingFeedback, generateFinalCoachingNote, generateStationScores } from '../services/claude.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -48,47 +48,128 @@ async function fetchKnowledge(ids) {
     .join('\n\n---\n\n');
 }
 
-// POST generate coaching feedback for a session
+async function loadSessionContext(sessionId) {
+  const [sessionDoc, recentSnap, objSnap] = await Promise.all([
+    collections.sessions().doc(sessionId).get(),
+    collections.sessions().orderBy('date', 'desc').limit(10).get(),
+    collections.objectives().orderBy('date', 'asc').get(),
+  ]);
+
+  const session = docToObj(sessionDoc);
+  if (!session) return null;
+
+  const recentSessions = recentSnap.docs.map(docToObj).filter(s => s && s.id !== sessionId);
+  const objectives = objSnap.docs.map(docToObj).filter(Boolean);
+
+  let venueNotes = null;
+  if (session.venueId) {
+    try {
+      const venueDoc = await collections.venues().doc(session.venueId).get();
+      const venue = docToObj(venueDoc);
+      if (venue?.notes) venueNotes = venue.notes;
+    } catch {}
+  }
+
+  const knowledgeIds = knowledgeIdsForSession(session.type);
+  const knowledge = await fetchKnowledge(knowledgeIds);
+
+  return { session, recentSessions, objectives, venueNotes, knowledge };
+}
+
+// POST generate initial coaching thread message for a session
 router.post('/feedback', async (req, res) => {
   try {
     const { sessionId } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
-    const [sessionDoc, recentSnap, objSnap] = await Promise.all([
-      collections.sessions().doc(sessionId).get(),
-      collections.sessions().orderBy('date', 'desc').limit(10).get(),
-      collections.objectives().orderBy('date', 'asc').get(),
-    ]);
+    const ctx = await loadSessionContext(sessionId);
+    if (!ctx) return res.status(404).json({ error: 'Session not found' });
 
-    const session = docToObj(sessionDoc);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const initialMessage = await generateCoachingFeedback(ctx);
 
-    const recentSessions = recentSnap.docs.map(docToObj).filter(s => s && s.id !== sessionId);
-    const objectives = objSnap.docs.map(docToObj).filter(Boolean);
-
-    let venueNotes = null;
-    if (session.venueId) {
-      try {
-        const venueDoc = await collections.venues().doc(session.venueId).get();
-        const venue = docToObj(venueDoc);
-        if (venue?.notes) venueNotes = venue.notes;
-      } catch {}
-    }
-
-    const knowledgeIds = knowledgeIdsForSession(session.type);
-    const knowledge = await fetchKnowledge(knowledgeIds);
-
-    const feedback = await generateCoachingFeedback({ session, recentSessions, objectives, venueNotes, knowledge });
+    const coachingThread = {
+      initialMessage,
+      userReply: null,
+      finalNote: null,
+      status: 'awaiting_reply',
+    };
 
     await collections.sessions().doc(sessionId).update({
-      coachingFeedback: feedback,
+      coachingThread,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ feedback });
+    res.json({ coachingThread });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate feedback' });
+  }
+});
+
+// POST submit a reply to the coaching thread and generate the final coaching note
+router.post('/feedback/reply', async (req, res) => {
+  try {
+    const { sessionId, reply } = req.body;
+    if (!sessionId || !reply?.trim()) return res.status(400).json({ error: 'sessionId and reply required' });
+
+    const ctx = await loadSessionContext(sessionId);
+    if (!ctx) return res.status(404).json({ error: 'Session not found' });
+
+    const existingThread = ctx.session.coachingThread;
+    if (!existingThread?.initialMessage) {
+      return res.status(400).json({ error: 'No coaching thread to reply to' });
+    }
+
+    const finalNote = await generateFinalCoachingNote({
+      ...ctx,
+      initialMessage: existingThread.initialMessage,
+      userReply: reply.trim(),
+    });
+
+    const coachingThread = {
+      initialMessage: existingThread.initialMessage,
+      userReply: reply.trim(),
+      finalNote,
+      status: 'complete',
+    };
+
+    await collections.sessions().doc(sessionId).update({
+      coachingThread,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ coachingThread });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to generate final coaching note' });
+  }
+});
+
+// POST generate HYROX station impact scores for a session
+router.post('/station-scores', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+
+    const sessionDoc = await collections.sessions().doc(sessionId).get();
+    const session = docToObj(sessionDoc);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const knowledgeDoc = await collections.knowledge().doc('exercise_transferability').get();
+    const knowledge = knowledgeDoc.exists ? knowledgeDoc.data().content : null;
+
+    const stationScores = await generateStationScores({ session, knowledge });
+    if (!stationScores) return res.status(502).json({ error: 'Failed to score stations' });
+
+    await collections.sessions().doc(sessionId).update({
+      stationScores,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ stationScores });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to generate station scores' });
   }
 });
 
