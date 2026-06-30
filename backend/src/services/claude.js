@@ -587,10 +587,14 @@ Base your assessment on training frequency and type, known weaknesses, upcoming 
 const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
 
 export async function generateStationScores({ session, knowledge }) {
-  const exercises = session.extractedExercises?.exercises?.length
+  const isHyroxSession = session.type === 'hyrox_training' || session.type === 'hyrox_race' || session.type === 'hyrox_competition';
+  const isRunSession = session.type === 'running';
+  const isStrengthSession = session.type === 'gym_strength';
+
+  const extractedList = session.extractedExercises?.exercises?.length
     ? session.extractedExercises.exercises
         .map(e => {
-          const sets = e.sets ? `${e.sets}x${e.reps || '?'}` : (e.reps ? `${e.reps} reps` : '');
+          const sets = e.sets ? `${e.sets}×${e.reps || '?'}` : (e.reps ? `${e.reps} reps` : '');
           const weight = e.weightKg ? `@ ${e.weightKg}kg` : '';
           const dist = e.distanceM ? `${e.distanceM}m` : '';
           return `- ${e.name}${sets ? ` ${sets}` : ''}${weight ? ` ${weight}` : ''}${dist ? ` ${dist}` : ''}${e.notes ? ` (${e.notes})` : ''}`;
@@ -598,26 +602,53 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
-  const notesBlock = session.notes?.trim() ? `\nSession notes: ${session.notes.trim().slice(0, 600)}` : '';
-
-  const knowledgeBlock = knowledge?.trim()
-    ? `\nExercise Transferability knowledge library (use this to map logged exercises to HYROX stations):\n---\n${knowledge}\n---`
+  const sessionTypeContext = isHyroxSession
+    ? `\nIMPORTANT: Session type is "${session.type}" — this is a full HYROX circuit or class covering all 9 stations. Unless the notes indicate only partial stations were done, assume moderate-to-high contribution across all stations. Adjust up or down based on specific details (loads, duration per station, intensity) if mentioned.`
+    : isRunSession
+    ? `\nIMPORTANT: Session type is "running". Running station score should reflect actual run volume and intensity. Other stations score low unless cross-training is specifically mentioned.`
+    : isStrengthSession
+    ? `\nIMPORTANT: Session type is "gym_strength". Use the Exercise Transferability library to map logged exercises to HYROX stations. Running station scores low unless running was explicitly mentioned.`
     : '';
 
-  const prompt = `You are an expert HYROX coach. Analyze this training session and score how much it contributed to each of the 9 HYROX stations, on a scale of 1-5.
+  const runningBlock = session.runningDistance
+    ? `\nRunning distance logged: ${session.runningDistance} km`
+    : '';
 
-Session type: ${session.type}
-Duration: ${session.duration || '?'} minutes
-RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}
-${exercises ? `Logged exercises (with sets x reps, weights, distances):\n${exercises}` : 'No structured exercise data extracted — use session notes below.'}${notesBlock}${knowledgeBlock}
+  const notesBlock = session.notes?.trim()
+    ? `\nFreeform session notes (always use this — may contain detail not captured in structured exercises):\n"${session.notes.trim().slice(0, 1200)}"`
+    : '';
 
-Scoring rules:
-- Score 1-5 per station: 1 = no contribution/transfer, 3 = moderate transfer, 5 = direct, high-volume, high-load specific work for that station.
-- Base scores on specificity (does the exercise directly match the station movement pattern?), volume (sets x reps, duration), and load (weight used relative to HYROX competition weights).
-- Use the Exercise Transferability knowledge library above to map logged exercises to the correct stations.
-- Be honest — most sessions will score high on 1-3 stations and low (1-2) on the rest. Do not inflate scores.
+  const extractedBlock = extractedList
+    ? `\nStructured exercises extracted from notes:\n${extractedList}`
+    : '';
 
-Return JSON exactly in this format:
+  const knowledgeBlock = knowledge?.trim()
+    ? `\nExercise Transferability knowledge library:\n---\n${knowledge}\n---`
+    : '';
+
+  const prompt = `You are an expert HYROX coach scoring how much a training session contributed to each of the 9 HYROX stations (1–5).
+${sessionTypeContext}
+Session data:
+- Type: ${session.type}
+- Duration: ${session.duration || '?'} min
+- RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}${runningBlock}${runningBlock ? '' : ''}
+${extractedBlock}${notesBlock}
+${knowledgeBlock}
+
+Scoring guide (base each score purely on evidence — do not default low if evidence is present):
+- 5 = direct, station-specific work at meaningful volume/load (e.g. 9km run at threshold pace → running=5; explicit sled push work → sled_push=5)
+- 4 = strong transfer or high-volume indirect work (e.g. full hyrox circuit class → most stations 4; heavy squats → sled_push=4)
+- 3 = moderate transfer (e.g. cycling → running=3; pull exercises → skierg/row=3)
+- 2 = weak indirect transfer
+- 1 = no meaningful contribution
+
+Key rules:
+- If running distance ≥ 5 km at RPE ≥ 6, running score = 4 or 5.
+- If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
+- Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
+- Only score a station low (1–2) if there is genuinely no evidence of contribution.
+
+Return JSON only:
 {
   "running": <1-5>,
   "skierg": <1-5>,

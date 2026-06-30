@@ -338,7 +338,13 @@ export default function TrainingLog() {
                           {session.equipment && ` · ${session.equipment.replace('_', ' ')}`}
                         </p>
                       )}
-                      {session.stationScores && <StationImpact scores={session.stationScores} />}
+                      {session.stationScores && (
+                        <StationImpact
+                          scores={session.stationScores}
+                          sessionId={session.id}
+                          onUpdate={stationScores => setSessions(prev => prev.map(s => s.id === session.id ? { ...s, stationScores } : s))}
+                        />
+                      )}
                       {session.coachingThread && (
                         <CoachingThread session={session} onUpdate={handleThreadUpdate} />
                       )}

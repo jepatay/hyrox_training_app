@@ -1,3 +1,7 @@
+import { useState } from 'react';
+import { coachingApi } from '@/lib/api';
+import { RefreshCw } from 'lucide-react';
+
 const STATIONS = [
   { key: 'running', label: 'Running', icon: '🏃' },
   { key: 'skierg', label: 'SkiErg', icon: '🎿' },
@@ -18,12 +22,40 @@ const SCORE_COLORS = {
   5: 'bg-green-500/15 border-green-500/40 text-green-400',
 };
 
-export default function StationImpact({ scores }) {
+export default function StationImpact({ scores, sessionId, onUpdate }) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    if (!sessionId || refreshing) return;
+    setRefreshing(true);
+    try {
+      const { stationScores } = await coachingApi.generateStationScores(sessionId);
+      onUpdate?.(stationScores);
+    } catch {
+      // silently ignore
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (!scores) return null;
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground font-medium mb-2">Station Impact</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-muted-foreground font-medium">Station Impact</p>
+        {sessionId && onUpdate && (
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            title="Recalculate station scores"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Recalculating…' : 'Recalculate'}
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
         {STATIONS.map(({ key, label, icon }) => {
           const score = scores[key] || 1;
