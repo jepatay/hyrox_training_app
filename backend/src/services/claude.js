@@ -605,9 +605,14 @@ export async function generateStationScores({ session, knowledge }) {
   const sessionTypeContext = isHyroxSession
     ? `\nIMPORTANT: Session type is "${session.type}" — this is a full HYROX circuit or class covering all 9 stations. Unless the notes indicate only partial stations were done, assume moderate-to-high contribution across all stations. Adjust up or down based on specific details (loads, duration per station, intensity) if mentioned.`
     : isRunSession
-    ? `\nIMPORTANT: Session type is "running". Running station score should reflect actual run volume and intensity. Other stations score low unless cross-training is specifically mentioned.`
+    ? `\nIMPORTANT: Session type is "running". Running station score should reflect actual run volume and intensity.
+Aerobic transfer rules for running sessions:
+- High-intensity running (intervals, tempo, RPE 7+) builds VO2max and lactate threshold that transfers to ALL aerobic HYROX stations. Score SkiErg, Row Erg, Wall Balls, and Burpee Broad Jump at 2-3 for a quality run session — these stations have a significant aerobic demand.
+- Sled Push, Sled Pull, Farmers Carry score 1-2 (these are strength/power dominated, running transfer is minimal).
+- Sandbag Lunges scores 2 if the run had significant volume (leg endurance transfer).
+- Only score other stations at 1 if the run was very short or easy (RPE ≤ 4).`
     : isStrengthSession
-    ? `\nIMPORTANT: Session type is "gym_strength". Use the Exercise Transferability library to map logged exercises to HYROX stations. Running station scores low unless running was explicitly mentioned.`
+    ? `\nIMPORTANT: Session type is "gym_strength". Use the Exercise Transferability library to map logged exercises to HYROX stations. Running station scores 1 unless running was explicitly mentioned. Other stations score based on exercise specificity and load.`
     : '';
 
   const runningBlock = session.runningDistance
