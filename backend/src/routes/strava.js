@@ -293,6 +293,27 @@ function buildNotes(act, detail, zones) {
   return lines.join('\n').trim();
 }
 
+// GET /api/strava/debug  — returns raw Strava API responses to diagnose auth/scope issues
+router.get('/debug', async (_req, res) => {
+  try {
+    const accessToken = await getFreshToken();
+    const [athleteRes, activitiesRes] = await Promise.all([
+      fetch('https://www.strava.com/api/v3/athlete', { headers: { Authorization: `Bearer ${accessToken}` } }),
+      fetch('https://www.strava.com/api/v3/athlete/activities?per_page=1', { headers: { Authorization: `Bearer ${accessToken}` } }),
+    ]);
+    const athlete = await athleteRes.json();
+    const activities = await activitiesRes.json();
+    res.json({
+      athleteStatus: athleteRes.status,
+      athlete,
+      activitiesStatus: activitiesRes.status,
+      activities,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/strava/sync  — fetch last 30 activities and write to sessions
 router.post('/sync', async (_req, res) => {
   try {
