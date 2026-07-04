@@ -7,7 +7,10 @@ const router = Router();
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
 
+// Strava deprecated the `type` field in favour of `sport_type`.
+// Both are mapped here so old tokens (type) and new tokens (sport_type) work.
 const STRAVA_TYPE_MAP = {
+  // Legacy `type` values
   Run: 'running',
   VirtualRun: 'running',
   Walk: 'running',
@@ -21,7 +24,18 @@ const STRAVA_TYPE_MAP = {
   VirtualRide: 'cycling',
   EBikeRide: 'cycling',
   MountainBikeRide: 'cycling',
+  // Current `sport_type` values (Strava API v3)
+  TrailRun: 'running',
+  VirtualRun_sport: 'running',
+  NordicSki: 'running',
+  Snowshoe: 'running',
 };
+
+function mapStravaType(act) {
+  // sport_type takes priority; fall back to type for older tokens
+  const raw = act.sport_type || act.type;
+  return STRAVA_TYPE_MAP[raw] || 'running';
+}
 
 async function getFreshToken() {
   const doc = await collections.profile().doc('main').get();
@@ -78,7 +92,6 @@ router.get('/auth-url', (_req, res) => {
     client_id: CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: 'code',
-    approval_prompt: 'auto',
     scope: 'activity:read_all',
   });
   res.json({ url: `https://www.strava.com/oauth/authorize?${params}` });
@@ -291,7 +304,12 @@ router.post('/sync', async (_req, res) => {
     );
     const activities = await activitiesRes.json();
     if (!Array.isArray(activities)) {
-      return res.status(400).json({ error: 'Failed to fetch activities from Strava' });
+      // Surface the actual Strava error so it's diagnosable
+      const stravaMessage = activities?.message || activities?.errors?.map(e => `${e.resource}:${e.code}`).join(', ') || 'Unknown error';
+      console.error('Strava activities fetch returned non-array:', JSON.stringify(activities));
+      return res.status(activitiesRes.status === 401 ? 401 : 400).json({
+        error: `Strava error: ${stravaMessage}. Try disconnecting and reconnecting Strava.`,
+      });
     }
 
     // Load blocklist (activity IDs explicitly deleted by user — never reimport)
@@ -319,7 +337,7 @@ router.post('/sync', async (_req, res) => {
     for (const act of activities) {
       if (blocklist.has(act.id)) continue;
       if (existingStravaIds.has(act.id)) continue;
-      const type = STRAVA_TYPE_MAP[act.type] || 'running';
+      const type = mapStravaType(act);
       const date = (act.start_date_local || act.start_date || '').slice(0, 10);
       if (manualSessionDateType.has(`${date}|${type}`)) continue;
 
