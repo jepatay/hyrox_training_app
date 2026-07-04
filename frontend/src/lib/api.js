@@ -106,4 +106,5 @@ export const stravaApi = {
   sync: () => api.post('/api/strava/sync', {}),
   backfillNotes: () => api.post('/api/strava/backfill-notes', {}),
   disconnect: () => api.delete('/api/strava/disconnect'),
+  debug: () => api.get('/api/strava/debug'),
 };

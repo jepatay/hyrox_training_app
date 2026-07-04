@@ -23,6 +23,7 @@ export default function TrainingLog() {
   const [expanded, setExpanded] = useState(null);
   const [stravaStatus, setStravaStatus] = useState(null); // null=loading, { connected, athlete }
   const [syncing, setSyncing] = useState(false);
+  const [stravaDebug, setStravaDebug] = useState(null);
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -204,6 +205,22 @@ export default function TrainingLog() {
                       size="sm"
                       variant="ghost"
                       className="gap-1.5 text-xs text-muted-foreground"
+                      onClick={async () => {
+                        setStravaDebug('Loading...');
+                        try {
+                          const data = await stravaApi.debug();
+                          setStravaDebug(JSON.stringify(data, null, 2));
+                        } catch (e) {
+                          setStravaDebug('Error: ' + e.message);
+                        }
+                      }}
+                    >
+                      🔍 Debug
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs text-muted-foreground"
                       onClick={handleStravaDisconnect}
                     >
                       <Link2Off className="h-3 w-3" /> Disconnect
@@ -220,6 +237,19 @@ export default function TrainingLog() {
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Strava debug output */}
+      {stravaDebug && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-yellow-400">Strava Debug</span>
+              <button className="text-xs text-muted-foreground" onClick={() => setStravaDebug(null)}>✕ Close</button>
+            </div>
+            <pre className="text-[10px] text-foreground whitespace-pre-wrap break-all overflow-auto max-h-60">{stravaDebug}</pre>
           </CardContent>
         </Card>
       )}
