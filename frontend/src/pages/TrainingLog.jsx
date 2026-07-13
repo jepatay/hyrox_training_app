@@ -133,13 +133,13 @@ export default function TrainingLog() {
   async function handleStravaSync() {
     setSyncing(true);
     try {
-      const [{ imported, total }] = await Promise.all([
+      const [{ imported, merged, total }] = await Promise.all([
         stravaApi.sync(),
         stravaApi.backfillNotes(),
       ]);
       toast({
         title: `Synced ${imported} new ${imported === 1 ? 'activity' : 'activities'}`,
-        description: `${total - imported} already imported. Notes refreshed.`,
+        description: `${merged ? `${merged} merged into existing sessions. ` : ''}${total - imported - (merged || 0)} already imported. Notes refreshed.`,
       });
       load();
     } catch (err) {

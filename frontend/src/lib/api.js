@@ -99,6 +99,17 @@ export const knowledgeApi = {
   save: (id, content) => api.put(`/api/knowledge/${id}`, { content }),
 };
 
+export const draftsApi = {
+  list: (status) => api.get(`/api/drafts${status ? `?status=${status}` : ''}`),
+  get: (date) => api.get(`/api/drafts/${date}`),
+  addEntry: (date, data) => api.post(`/api/drafts/${date}/entries`, data),
+  addPhoto: (date, data) => api.post(`/api/drafts/${date}/photo`, data),
+  deleteEntry: (date, entryId) => api.delete(`/api/drafts/${date}/entries/${entryId}`),
+  delete: (date) => api.delete(`/api/drafts/${date}`),
+  parse: (date) => api.post(`/api/drafts/${date}/parse`, {}),
+  convert: (date, fields) => api.post(`/api/drafts/${date}/convert`, fields),
+};
+
 export const stravaApi = {
   getStatus: () => api.get('/api/strava/status'),
   getAuthUrl: () => api.get('/api/strava/auth-url'),

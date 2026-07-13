@@ -6,12 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/toast';
-import { Plus, Zap, Target, Clock, TrendingUp, Activity, MapPin } from 'lucide-react';
+import { Mic, Zap, Target, Clock, TrendingUp, Activity, MapPin } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
-import SessionForm from '@/components/forms/SessionForm';
 
 // Collapse legacy run1–run8 spokes into a single "Running" entry
 function normalizeRadarData(radarData) {
@@ -30,7 +29,6 @@ export default function Dashboard() {
   const [objectives, setObjectives] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showLogForm, setShowLogForm] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -94,8 +92,8 @@ export default function Dashboard() {
           <Button onClick={() => navigate('/suggest')} variant="outline" size="sm" className="gap-1.5">
             <Zap className="h-3.5 w-3.5" /> Suggest Training
           </Button>
-          <Button onClick={() => setShowLogForm(true)} size="sm" className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" /> Log Training
+          <Button onClick={() => navigate('/drafts')} size="sm" className="gap-1.5">
+            <Mic className="h-3.5 w-3.5" /> Log Draft
           </Button>
         </div>
       </div>
@@ -265,16 +263,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {showLogForm && (
-        <SessionForm
-          onClose={() => setShowLogForm(false)}
-          onSaved={(session) => {
-            setSessions(prev => [session, ...prev]);
-            setShowLogForm(false);
-            toast({ title: 'Session logged!', description: 'Your training has been saved.' });
-          }}
-        />
-      )}
     </div>
   );
 }

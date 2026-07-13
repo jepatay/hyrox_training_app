@@ -12,6 +12,7 @@ import SuggestionTool from '@/pages/SuggestionTool';
 import Venues from '@/pages/Venues';
 import StravaCallback from '@/pages/StravaCallback';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
+import Drafts from '@/pages/Drafts';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -37,6 +38,7 @@ function AppContent() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/objectives" element={<Objectives />} />
         <Route path="/training" element={<TrainingLog />} />
+        <Route path="/drafts" element={<Drafts />} />
         <Route path="/records" element={<Records />} />
         <Route path="/report" element={<MonthlyReport />} />
         <Route path="/suggest" element={<SuggestionTool />} />

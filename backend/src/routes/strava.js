@@ -139,6 +139,8 @@ router.post('/exchange', async (req, res) => {
   }
 });
 
+const STRAVA_NOTES_MARKER = '\n\n--- Strava data ---\n';
+
 function formatPace(speedMs) {
   if (!speedMs || speedMs <= 0) return null;
   const secPerKm = 1000 / speedMs;
@@ -150,6 +152,32 @@ function formatPace(speedMs) {
 function paceSec(speedMs) {
   if (!speedMs || speedMs <= 0) return null;
   return 1000 / speedMs;
+}
+
+// Classifies laps into work/rest without relying on GPS distance (useless for
+// stairs/stationary intervals) or Strava's `is_rest` flag (only ever set on
+// laps from structured trainer files — never present on manual GPS-watch laps).
+// Falls back to an empty split (caller then lists every lap individually,
+// still carrying full time/distance/HR — nothing is ever dropped).
+function classifyIntervalLaps(laps) {
+  const explicitRest = laps.some(l => l.is_rest);
+  if (explicitRest) {
+    return { active: laps.filter(l => !l.is_rest), rest: laps.filter(l => l.is_rest) };
+  }
+  // Detect a strict work/rest alternation by elapsed time — the common shape
+  // of a manually lap-pressed interval session (rep, pause, rep, pause, ...).
+  if (laps.length >= 4 && laps.length % 2 === 0) {
+    const odds = laps.filter((_, i) => i % 2 === 0);
+    const evens = laps.filter((_, i) => i % 2 === 1);
+    const avg = arr => arr.reduce((s, l) => s + (l.elapsed_time || 0), 0) / arr.length;
+    const oddAvg = avg(odds);
+    const evenAvg = avg(evens);
+    const ratio = oddAvg > 0 && evenAvg > 0 ? Math.max(oddAvg, evenAvg) / Math.min(oddAvg, evenAvg) : 0;
+    if (ratio > 1.3) {
+      return oddAvg >= evenAvg ? { active: odds, rest: evens } : { active: evens, rest: odds };
+    }
+  }
+  return { active: [], rest: [] };
 }
 
 function buildNotes(act, detail, zones) {
@@ -197,10 +225,12 @@ function buildNotes(act, detail, zones) {
   // ── LAP DATA ──
   const laps = detail?.laps;
   if (laps?.length > 1) {
-    // Separate active intervals from rest laps
-    // Strava sets is_rest=true on rest laps; fall back to distance < 50m heuristic
-    const activeLaps = laps.filter(l => !l.is_rest && (l.distance || 0) >= 50);
-    const restLaps = laps.filter(l => l.is_rest || (l.distance || 0) < 50);
+    // Separate active intervals from rest laps. Distance is meaningless for
+    // stationary/vertical work (e.g. stair repeats have ~0m GPS distance for
+    // both the climb and the pause), so classify by elapsed-time alternation
+    // instead — this is what lets short, high-rep sessions like stairs still
+    // get grouped into "Intervals (N reps)" rather than losing that structure.
+    const { active: activeLaps, rest: restLaps } = classifyIntervalLaps(laps);
     const isIntervalSession = restLaps.length > 0 && activeLaps.length > 0;
 
     if (isIntervalSession) {
@@ -345,22 +375,25 @@ router.post('/sync', async (_req, res) => {
     const existingStravaIds = new Set(
       existingSessions.filter(s => s.stravaActivityId).map(s => s.stravaActivityId)
     );
-    // Deduplicate by date+type ONLY for manually logged sessions (no stravaActivityId)
-    // This prevents importing a Strava activity when the user already logged it manually
-    // but does NOT block a second Strava activity on the same day
-    const manualSessionDateType = new Set(
+    // Manually logged sessions (no stravaActivityId yet) keyed by date+type.
+    // When a Strava activity matches one of these, its lap/HR/pace data is
+    // MERGED into the existing session rather than skipped — previously this
+    // was silently dropped whenever the workout had already been hand-logged
+    // (or captured as a draft) first, which is exactly the case that loses
+    // the richer Strava data (e.g. stair-repeat lap times + heart rate).
+    const manualSessionsByDateType = new Map(
       existingSessions
         .filter(s => !s.stravaActivityId)
-        .map(s => `${s.date}|${s.type}`)
+        .map(s => [`${s.date}|${s.type}`, s])
     );
 
     let imported = 0;
+    let merged = 0;
     for (const act of activities) {
       if (blocklist.has(act.id)) continue;
       if (existingStravaIds.has(act.id)) continue;
       const type = mapStravaType(act);
       const date = (act.start_date_local || act.start_date || '').slice(0, 10);
-      if (manualSessionDateType.has(`${date}|${type}`)) continue;
 
       const durationMin = Math.round((act.moving_time || 0) / 60);
       const distanceKm = act.distance
@@ -376,12 +409,40 @@ router.post('/sync', async (_req, res) => {
           fetch(`https://www.strava.com/api/v3/activities/${act.id}/zones`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
         ]);
-      } catch {}
+      } catch (err) {
+        console.error(`Strava sync: detail/zones fetch failed for activity ${act.id}:`, err.message);
+      }
 
       // Use athlete's perceived exertion from Strava as RPE if available
       const rpe = detail?.perceived_exertion
         ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
         : null;
+
+      const stravaNotes = buildNotes(act, detail, zones);
+
+      const dateTypeKey = `${date}|${type}`;
+      const existingManual = manualSessionsByDateType.get(dateTypeKey);
+      if (existingManual) {
+        // Always keep the "--- Strava data ---" marker (even with an empty
+        // prefix) so backfill-notes can reliably re-enrich just the Strava
+        // portion later without clobbering the athlete's own notes.
+        const mergedNotes = `${existingManual.notes?.trim() || ''}${STRAVA_NOTES_MARKER}${stravaNotes}`;
+        await collections.sessions().doc(existingManual.id).update({
+          stravaActivityId: act.id,
+          stravaActivityName: act.name,
+          notes: mergedNotes,
+          duration: existingManual.duration || durationMin,
+          runningDistance: existingManual.runningDistance || distanceKm,
+          rpe: existingManual.rpe != null ? existingManual.rpe : rpe,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        // This session now carries a stravaActivityId — a second Strava
+        // activity on the same date+type should create its own session
+        // rather than merging into this one again.
+        manualSessionsByDateType.delete(dateTypeKey);
+        merged++;
+        continue;
+      }
 
       await collections.sessions().add({
         stravaActivityId: act.id,
@@ -392,7 +453,7 @@ router.post('/sync', async (_req, res) => {
         status: 'completed',
         duration: durationMin,
         runningDistance: distanceKm,
-        notes: buildNotes(act, detail, zones),
+        notes: stravaNotes,
         location: act.location_city || '',
         rpe,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -407,7 +468,7 @@ router.post('/sync', async (_req, res) => {
       { merge: true }
     );
 
-    res.json({ imported, total: activities.length });
+    res.json({ imported, merged, total: activities.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Sync failed' });
@@ -419,10 +480,10 @@ router.post('/backfill-notes', async (_req, res) => {
   try {
     const accessToken = await getFreshToken();
 
-    const snap = await collections.sessions()
-      .where('syncedFromStrava', '==', true)
-      .get();
-
+    // Refresh any session carrying a Strava link — not just ones created by
+    // sync. Sessions that started as a manual/draft entry and were later
+    // enriched via the sync merge path also have stravaActivityId set.
+    const snap = await collections.sessions().get();
     const toUpdate = snap.docs.filter(d => d.data().stravaActivityId);
 
     let updated = 0;
@@ -435,7 +496,14 @@ router.post('/backfill-notes', async (_req, res) => {
           fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/zones`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
         ]);
-        const notes = buildNotes({ description: detail.description }, detail, zones);
+        const freshStravaNotes = buildNotes({ description: detail.description }, detail, zones);
+        // Preserve any athlete-written prefix (manual/draft notes) ahead of the marker —
+        // only the Strava-derived portion gets refreshed.
+        const existingNotes = doc.data().notes || '';
+        const markerIdx = existingNotes.indexOf(STRAVA_NOTES_MARKER);
+        const notes = markerIdx >= 0
+          ? `${existingNotes.slice(0, markerIdx)}${STRAVA_NOTES_MARKER}${freshStravaNotes}`
+          : freshStravaNotes;
         const rpe = detail?.perceived_exertion
           ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
           : undefined;
@@ -447,7 +515,9 @@ router.post('/backfill-notes', async (_req, res) => {
           });
           updated++;
         }
-      } catch {}
+      } catch (err) {
+        console.error(`Strava backfill-notes: failed for activity ${stravaActivityId}:`, err.message);
+      }
     }
 
     res.json({ updated, total: toUpdate.length });
