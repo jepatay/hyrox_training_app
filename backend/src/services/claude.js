@@ -584,6 +584,64 @@ Base your assessment on training frequency and type, known weaknesses, upcoming 
   return chatJson(prompt, 400);
 }
 
+// Reads a photo of a cardio machine's display (SkiErg, rower, treadmill, bike...)
+// and returns a short text summary of the stats shown. No image is stored —
+// this is called once at capture time and only the extracted text is kept.
+export async function extractDraftEntryFromImage({ imageBase64, caption }) {
+  if (!process.env.OPENAI_API_KEY) return caption || null;
+  try {
+    const completion = await getClient().chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 250,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `This is a photo of a cardio machine's display screen (e.g. SkiErg, rowing erg, treadmill, assault bike) taken right after a workout. Read every stat visible on the screen — time, distance, pace/split, calories, watts, stroke/cadence rate, heart rate, etc. — and return ONE short plain-text line summarizing them, e.g. "SkiErg: 1000m in 3:52, 82 cal, avg HR 168 bpm". If the screen or numbers are unclear, say so briefly instead of guessing values.${caption ? `\n\nAthlete's caption for this photo: "${caption}"` : ''}`,
+          },
+          { type: 'image_url', image_url: { url: imageBase64 } },
+        ],
+      }],
+    });
+    return completion.choices[0].message.content?.trim() || null;
+  } catch (err) {
+    console.error('extractDraftEntryFromImage: OpenAI vision error:', err?.status, err?.message);
+    return caption || null;
+  }
+}
+
+// Merges the athlete's quick-capture draft entries (voice/text/photo) for a single
+// day into structured session fields, so the log form can be pre-filled for review.
+export async function extractSessionFromDraft({ date, entries, sessionTypes }) {
+  const entryLines = entries.map((e, i) => {
+    const label = e.kind === 'photo' ? 'Photo (machine screen) reading' : e.kind === 'voice' ? 'Voice note' : 'Note';
+    return `${i + 1}. [${label}] ${e.text}`;
+  }).join('\n');
+
+  const typeList = (sessionTypes || []).join(', ');
+
+  const prompt = `The athlete captured these quick notes about their training on ${date}. They may describe one workout or several separate activities done the same day (e.g. a morning kayak session and an afternoon gym session) — combine everything into a single training log entry.
+
+Notes:
+${entryLines}
+
+Return JSON only:
+{
+  "type": "<one of: ${typeList}>",
+  "duration": <total minutes across all notes, integer, or null if not mentioned/inferable>,
+  "rpe": <integer 1-10 perceived effort if mentioned or clearly implied, else null>,
+  "runningDistance": <km as a number, only if a running/hyrox running distance is mentioned, else null>,
+  "volume": "<Low, Medium, High, or null>",
+  "weightVest": <true only if a weight vest is explicitly mentioned, else false>,
+  "notes": "<a clean, well-written summary combining all the notes into one coherent session description, in the athlete's own voice, preserving every specific number/time/rep/HR value mentioned>"
+}
+
+Pick "type" based on the dominant or most structured activity described. If nothing in the list fits well (e.g. kayaking, swimming, hiking), use "other". Only fill numeric fields you can actually infer from the notes — do not guess.`;
+
+  return chatJson(prompt, 500);
+}
+
 const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
 
 export async function generateStationScores({ session, knowledge }) {
