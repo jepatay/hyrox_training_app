@@ -89,7 +89,14 @@ export default function Drafts() {
 
   function toggleListening() {
     if (listening) {
-      recognitionRef.current?.stop();
+      // Stop must win immediately — some mobile browsers never fire onend
+      // in continuous mode, which is what left the mic stuck "on" with no
+      // way to stop it. Clearing the ref makes any late/stray event from
+      // this recognizer a no-op instead of it silently reactivating.
+      const current = recognitionRef.current;
+      recognitionRef.current = null;
+      setListening(false);
+      try { current?.abort(); } catch {}
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -104,6 +111,7 @@ export default function Drafts() {
     recognition.interimResults = true;
     recognition.continuous = true;
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return; // stopped/stale — ignore
       let finalChunk = '';
       let interimChunk = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -114,11 +122,23 @@ export default function Drafts() {
       if (finalChunk) baseTextRef.current += finalChunk + ' ';
       setNoteText((baseTextRef.current + interimChunk).trim());
     };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
-    recognitionRef.current = recognition;
-    recognition.start();
-    setListening(true);
+    recognition.onerror = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+      setListening(true);
+    } catch {
+      toast({ title: 'Error', description: 'Could not start voice input — try again.', variant: 'destructive' });
+    }
   }
 
   async function handleAddNote() {

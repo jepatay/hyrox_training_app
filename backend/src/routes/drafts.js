@@ -37,10 +37,15 @@ async function upsertEntry(date, entry) {
 // GET /api/drafts  — list drafts, most recent date first
 router.get('/', async (req, res) => {
   try {
-    let query = collections.drafts().orderBy('date', 'desc');
-    if (req.query.status) query = query.where('status', '==', req.query.status);
-    const snap = await query.get();
-    res.json(snap.docs.map(docToObj).filter(Boolean));
+    // Filtering by status AND ordering by date on different fields would need
+    // a composite Firestore index that doesn't exist for this collection —
+    // so sort in memory instead rather than chaining where()+orderBy().
+    const snap = req.query.status
+      ? await collections.drafts().where('status', '==', req.query.status).get()
+      : await collections.drafts().orderBy('date', 'desc').get();
+    const drafts = snap.docs.map(docToObj).filter(Boolean)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    res.json(drafts);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch drafts' });
