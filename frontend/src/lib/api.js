@@ -102,6 +102,7 @@ export const knowledgeApi = {
 export const draftsApi = {
   list: (status) => api.get(`/api/drafts${status ? `?status=${status}` : ''}`),
   get: (date) => api.get(`/api/drafts/${date}`),
+  ocr: (data) => api.post('/api/drafts/ocr', data),
   addEntry: (date, data) => api.post(`/api/drafts/${date}/entries`, data),
   addPhoto: (date, data) => api.post(`/api/drafts/${date}/photo`, data),
   deleteEntry: (date, entryId) => api.delete(`/api/drafts/${date}/entries/${entryId}`),

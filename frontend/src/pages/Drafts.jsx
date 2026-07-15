@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Mic, Square, Camera, Plus, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { Mic, Square, Camera, Plus, Trash2, Sparkles, Loader2, X } from 'lucide-react';
 
 const SPEECH_SUPPORTED = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -55,7 +55,7 @@ export default function Drafts() {
   const [date, setDate] = useState(today);
   const [noteText, setNoteText] = useState('');
   const [listening, setListening] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState(null); // { dataUrl, ocrBusy }
   const [addingNote, setAddingNote] = useState(false);
   const [convertPreview, setConvertPreview] = useState(null);
   const [converting, setConverting] = useState(false);
@@ -142,15 +142,15 @@ export default function Drafts() {
   }
 
   async function handleAddNote() {
-    if (!noteText.trim()) return;
+    if (!noteText.trim() && !pendingPhoto) return;
     setAddingNote(true);
     try {
-      const updated = await draftsApi.addEntry(date, {
-        kind: voiceUsedRef.current ? 'voice' : 'text',
-        text: noteText.trim(),
-      });
+      const kind = pendingPhoto ? 'photo' : (voiceUsedRef.current ? 'voice' : 'text');
+      const text = noteText.trim() || '(photo — could not read the screen)';
+      const updated = await draftsApi.addEntry(date, { kind, text });
       upsertDraft(updated);
       setNoteText('');
+      setPendingPhoto(null);
       voiceUsedRef.current = false;
       toast({ title: 'Added to draft', description: relativeDateLabel(date) });
     } catch (err) {
@@ -160,20 +160,25 @@ export default function Drafts() {
     }
   }
 
+  // Staged, not submitted: the photo is read in the background and its
+  // extracted text lands in the (still editable) textarea alongside a
+  // thumbnail, so the athlete can add more comments before one explicit
+  // "Add to Draft" commits everything together.
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    setPhotoBusy(true);
+    const dataUrl = await resizeImageToDataUrl(file);
+    setPendingPhoto({ dataUrl, ocrBusy: true });
     try {
-      const dataUrl = await resizeImageToDataUrl(file);
-      const updated = await draftsApi.addPhoto(date, { imageBase64: dataUrl });
-      upsertDraft(updated);
-      toast({ title: 'Photo read', description: 'Extracted stats added to your draft.' });
+      const { extracted } = await draftsApi.ocr({ imageBase64: dataUrl });
+      setPendingPhoto(prev => (prev?.dataUrl === dataUrl ? { ...prev, ocrBusy: false } : prev));
+      if (extracted) {
+        setNoteText(prev => prev.trim() ? `${prev.trim()}\n${extracted}` : extracted);
+      }
     } catch (err) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setPhotoBusy(false);
+      setPendingPhoto(prev => (prev?.dataUrl === dataUrl ? { ...prev, ocrBusy: false } : prev));
+      toast({ title: 'Error', description: "Couldn't read the photo — you can still add it with a note.", variant: 'destructive' });
     }
   }
 
@@ -273,6 +278,21 @@ export default function Drafts() {
             <Label>Date</Label>
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} max={today} />
           </div>
+          {pendingPhoto && (
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-secondary/30">
+              <img src={pendingPhoto.dataUrl} alt="Attached" className="h-12 w-12 rounded object-cover shrink-0" />
+              <div className="flex-1 text-xs text-muted-foreground">
+                {pendingPhoto.ocrBusy ? (
+                  <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Reading screen...</span>
+                ) : (
+                  'Photo attached — extracted text added below, edit as needed.'
+                )}
+              </div>
+              <button type="button" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setPendingPhoto(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <Textarea
             ref={noteRef}
             placeholder="What did you do? e.g. 'Went kayaking for an hour this morning, felt strong the whole way...'"
@@ -294,12 +314,11 @@ export default function Drafts() {
               {listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
               {listening ? 'Stop' : 'Voice'}
             </Button>
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={photoBusy}>
-              {photoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-              {photoBusy ? 'Reading screen...' : 'Photo'}
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={pendingPhoto?.ocrBusy}>
+              <Camera className="h-3.5 w-3.5" /> Photo
             </Button>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoChange} />
-            <Button type="button" size="sm" className="gap-1.5 ml-auto" onClick={handleAddNote} disabled={!noteText.trim() || addingNote}>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+            <Button type="button" size="sm" className="gap-1.5 ml-auto" onClick={handleAddNote} disabled={(!noteText.trim() && !pendingPhoto) || addingNote || pendingPhoto?.ocrBusy}>
               <Plus className="h-3.5 w-3.5" /> {addingNote ? 'Adding...' : 'Add to Draft'}
             </Button>
           </div>
