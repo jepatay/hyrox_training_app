@@ -34,6 +34,21 @@ async function upsertEntry(date, entry) {
   return docToObj(await ref.get());
 }
 
+// POST /api/drafts/ocr  — stateless: read a photo and return the extracted text
+// WITHOUT saving anything, so the composer can show it for review/editing
+// (alongside more typed/voice comments) before the entry is actually added.
+router.post('/ocr', async (req, res) => {
+  try {
+    const { imageBase64, caption } = req.body;
+    if (!imageBase64) return res.status(400).json({ error: 'imageBase64 required' });
+    const extracted = await extractDraftEntryFromImage({ imageBase64, caption });
+    res.json({ extracted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to read photo' });
+  }
+});
+
 // GET /api/drafts  — list drafts, most recent date first
 router.get('/', async (req, res) => {
   try {
