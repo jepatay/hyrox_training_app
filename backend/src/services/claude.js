@@ -660,8 +660,14 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
+  const notesLower = (session.notes || '').toLowerCase();
+  const mentionsOtherCardioMachine = /\b(assault bike|echo bike|air ?bike|fan bike|spin bike|stationary bike|cycling|bike)\b/.test(notesLower);
+  const cardioTransferBlock = mentionsOtherCardioMachine
+    ? `\nIMPORTANT — cardio machine transfer: the notes describe meaningful work on a bike/cycling machine. That's a genuine aerobic/VO2max stimulus, just like running, rowing, or skiing — do NOT default Running to 1 just because the word "running" itself wasn't used. Score Running 2-3 for a solid bike effort (higher for a long or high-intensity one, e.g. 200+ calories or 15+ minutes at real effort), and give the same aerobic-transfer credit to SkiErg, Row Erg, Wall Balls, and Burpee Broad Jump that a quality run session would get.`
+    : '';
+
   const sessionTypeContext = isHyroxSession
-    ? `\nIMPORTANT: Session type is "${session.type}" — this is a full HYROX circuit or class covering all 9 stations. Unless the notes indicate only partial stations were done, assume moderate-to-high contribution across all stations. Adjust up or down based on specific details (loads, duration per station, intensity) if mentioned.`
+    ? `\nIMPORTANT: Session type is "${session.type}" — this is a full HYROX circuit or class covering all 9 stations. Unless the notes indicate only partial stations were done, assume moderate-to-high contribution across all stations. Adjust up or down based on specific details (loads, duration per station, intensity) if mentioned.${cardioTransferBlock}`
     : isRunSession
     ? `\nIMPORTANT: Session type is "running". Running station score should reflect actual run volume and intensity.
 Aerobic transfer rules for running sessions:
@@ -670,8 +676,8 @@ Aerobic transfer rules for running sessions:
 - Sandbag Lunges scores 2 if the run had significant volume (leg endurance transfer).
 - Only score other stations at 1 if the run was very short or easy (RPE ≤ 4).`
     : isStrengthSession
-    ? `\nIMPORTANT: Session type is "gym_strength". Use the Exercise Transferability library to map logged exercises to HYROX stations. Running station scores 1 unless running was explicitly mentioned. Other stations score based on exercise specificity and load.`
-    : '';
+    ? `\nIMPORTANT: Session type is "gym_strength". Use the Exercise Transferability library to map logged exercises to HYROX stations. Base the Running score on evidence of aerobic/cardio work in the notes (running, biking, rowing, skiing, high-rep conditioning) — score 1 only if there's genuinely no cardio component. Other stations score based on exercise specificity and load.${cardioTransferBlock}`
+    : `${cardioTransferBlock}`;
 
   const runningBlock = session.runningDistance
     ? `\nRunning distance logged: ${session.runningDistance} km`
@@ -710,6 +716,7 @@ Key rules:
 - If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
 - Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
+- For direct station-specific work, weigh total volume against the actual HYROX race demand at that station (e.g. ~75-100 wall ball reps, ~1000m ski/row erg, 50m sled, 200m farmers carry), not load alone. A heavier load done for low total volume (e.g. 30-40 wall ball reps, even at a heavy ball weight) is moderate transfer (2-3) — reserve 4-5 for volume that's close to or exceeds race demand, or clearly extended time-under-tension at that movement.
 
 Return JSON only:
 {
