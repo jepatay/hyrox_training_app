@@ -89,14 +89,22 @@ export default function Drafts() {
 
   function toggleListening() {
     if (listening) {
-      // Stop must win immediately — some mobile browsers never fire onend
-      // in continuous mode, which is what left the mic stuck "on" with no
-      // way to stop it. Clearing the ref makes any late/stray event from
-      // this recognizer a no-op instead of it silently reactivating.
-      const current = recognitionRef.current;
-      recognitionRef.current = null;
+      // The button must respond immediately (some mobile browsers never
+      // fire onend), but use stop() — not abort() — so the browser still
+      // delivers a final result for whatever was just said. abort() is a
+      // hard cancel that throws that away, which was swallowing the last
+      // thing spoken before Stop was pressed. Keep the ref alive briefly so
+      // that trailing onresult event can still land; only hard-abort and
+      // release it if the browser genuinely never ends the session.
       setListening(false);
-      try { current?.abort(); } catch {}
+      const current = recognitionRef.current;
+      try { current?.stop(); } catch {}
+      setTimeout(() => {
+        if (recognitionRef.current === current) {
+          try { current?.abort(); } catch {}
+          recognitionRef.current = null;
+        }
+      }, 2000);
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
