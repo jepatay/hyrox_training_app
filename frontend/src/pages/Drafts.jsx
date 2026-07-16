@@ -61,6 +61,7 @@ export default function Drafts() {
   const [converting, setConverting] = useState(false);
   const recognitionRef = useRef(null);
   const baseTextRef = useRef('');
+  const interimRef = useRef('');
   const voiceUsedRef = useRef(false);
   const noteRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -113,11 +114,24 @@ export default function Drafts() {
       return;
     }
     baseTextRef.current = noteText.trim() ? noteText.trim() + ' ' : '';
+    interimRef.current = '';
     voiceUsedRef.current = true;
     const recognition = new SR();
     recognition.lang = navigator.language || 'en-US';
     recognition.interimResults = true;
     recognition.continuous = true;
+
+    // Some browsers end the session without ever promoting a trailing
+    // utterance to a final result — without this, that speech was shown
+    // live while talking but then silently lost once onend/onerror fired.
+    const salvageInterim = () => {
+      if (interimRef.current) {
+        baseTextRef.current += interimRef.current + ' ';
+        interimRef.current = '';
+        setNoteText(baseTextRef.current.trim());
+      }
+    };
+
     recognition.onresult = (event) => {
       if (recognitionRef.current !== recognition) return; // stopped/stale — ignore
       let finalChunk = '';
@@ -128,17 +142,27 @@ export default function Drafts() {
         else interimChunk += transcript;
       }
       if (finalChunk) baseTextRef.current += finalChunk + ' ';
+      interimRef.current = interimChunk;
       setNoteText((baseTextRef.current + interimChunk).trim());
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       if (recognitionRef.current !== recognition) return;
       recognitionRef.current = null;
       setListening(false);
+      salvageInterim();
+      // Surface the real reason instead of failing silently — "no-speech"
+      // and a manual "aborted" stop aren't worth interrupting the user for.
+      if (event.error === 'no-speech') {
+        toast({ title: "Didn't catch that", description: 'No speech detected — try again or type instead.' });
+      } else if (event.error !== 'aborted') {
+        toast({ title: 'Voice input error', description: `${event.error} — try again or type instead.`, variant: 'destructive' });
+      }
     };
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) return;
       recognitionRef.current = null;
       setListening(false);
+      salvageInterim();
     };
     try {
       recognition.start();
