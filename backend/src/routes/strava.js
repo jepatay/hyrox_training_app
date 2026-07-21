@@ -149,37 +149,6 @@ function formatPace(speedMs) {
   return `${min}:${String(sec).padStart(2, '0')}/km`;
 }
 
-function paceSec(speedMs) {
-  if (!speedMs || speedMs <= 0) return null;
-  return 1000 / speedMs;
-}
-
-// Classifies laps into work/rest without relying on GPS distance (useless for
-// stairs/stationary intervals) or Strava's `is_rest` flag (only ever set on
-// laps from structured trainer files — never present on manual GPS-watch laps).
-// Falls back to an empty split (caller then lists every lap individually,
-// still carrying full time/distance/HR — nothing is ever dropped).
-function classifyIntervalLaps(laps) {
-  const explicitRest = laps.some(l => l.is_rest);
-  if (explicitRest) {
-    return { active: laps.filter(l => !l.is_rest), rest: laps.filter(l => l.is_rest) };
-  }
-  // Detect a strict work/rest alternation by elapsed time — the common shape
-  // of a manually lap-pressed interval session (rep, pause, rep, pause, ...).
-  if (laps.length >= 4 && laps.length % 2 === 0) {
-    const odds = laps.filter((_, i) => i % 2 === 0);
-    const evens = laps.filter((_, i) => i % 2 === 1);
-    const avg = arr => arr.reduce((s, l) => s + (l.elapsed_time || 0), 0) / arr.length;
-    const oddAvg = avg(odds);
-    const evenAvg = avg(evens);
-    const ratio = oddAvg > 0 && evenAvg > 0 ? Math.max(oddAvg, evenAvg) / Math.min(oddAvg, evenAvg) : 0;
-    if (ratio > 1.3) {
-      return oddAvg >= evenAvg ? { active: odds, rest: evens } : { active: evens, rest: odds };
-    }
-  }
-  return { active: [], rest: [] };
-}
-
 function buildNotes(act, detail, zones) {
   const lines = [];
 
@@ -223,58 +192,26 @@ function buildNotes(act, detail, zones) {
   }
 
   // ── LAP DATA ──
+  // No filtering or work/rest classification — Strava's own lap boundaries
+  // (however the athlete or device split them) are shown exactly as recorded,
+  // every lap, so nothing is ever guessed away or hidden.
   const laps = detail?.laps;
   if (laps?.length > 1) {
-    // Separate active intervals from rest laps. Distance is meaningless for
-    // stationary/vertical work (e.g. stair repeats have ~0m GPS distance for
-    // both the climb and the pause), so classify by elapsed-time alternation
-    // instead — this is what lets short, high-rep sessions like stairs still
-    // get grouped into "Intervals (N reps)" rather than losing that structure.
-    const { active: activeLaps, rest: restLaps } = classifyIntervalLaps(laps);
-    const isIntervalSession = restLaps.length > 0 && activeLaps.length > 0;
-
-    if (isIntervalSession) {
-      // Only show active intervals — rest laps are just walking recovery
-      lines.push('');
-      lines.push(`Intervals (${activeLaps.length} reps):`);
-      activeLaps.forEach((l, i) => {
-        const p = formatPace(l.average_speed);
-        const dist = Math.round(l.distance || 0);
-        const elapsed = l.moving_time || l.elapsed_time || 0;
-        const min = Math.floor(elapsed / 60);
-        const sec = elapsed % 60;
-        let row = `  Rep ${i + 1}: ${dist}m @ ${p} (${min}:${String(sec).padStart(2, '0')})`;
-        if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
-        if (l.total_elevation_gain > 5) row += ` · +${Math.round(l.total_elevation_gain)}m`;
-        lines.push(row);
-      });
-
-      // Summary
-      const avgPaceSec = activeLaps.reduce((s, l) => s + (paceSec(l.average_speed) || 0), 0) / activeLaps.length;
-      const avgDist = Math.round(activeLaps.reduce((s, l) => s + (l.distance || 0), 0) / activeLaps.length);
-      const bestLap = activeLaps.reduce((b, l) => (!b || (l.average_speed || 0) > (b.average_speed || 0)) ? l : b, null);
-      const aMin = Math.floor(avgPaceSec / 60); const aSec = Math.round(avgPaceSec % 60);
-      lines.push('');
-      lines.push(`Summary: ${activeLaps.length} × ~${avgDist}m · avg ${aMin}:${String(aSec).padStart(2, '0')}/km · best ${formatPace(bestLap?.average_speed)}`);
-
-    } else {
-      // Regular laps (loops, segments) — list all
-      lines.push('');
-      lines.push('Laps:');
-      laps.forEach((l, i) => {
-        const p = formatPace(l.average_speed);
-        const dist = Math.round(l.distance || 0);
-        const elapsed = l.elapsed_time || 0;
-        const min = Math.floor(elapsed / 60);
-        const sec = elapsed % 60;
-        let row = `  Lap ${i + 1}: ${dist}m`;
-        if (p) row += ` @ ${p}`;
-        row += ` (${min}:${String(sec).padStart(2, '0')})`;
-        if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
-        if (l.total_elevation_gain > 5) row += ` · +${Math.round(l.total_elevation_gain)}m`;
-        lines.push(row);
-      });
-    }
+    lines.push('');
+    lines.push(`Laps (${laps.length}):`);
+    laps.forEach((l, i) => {
+      const p = formatPace(l.average_speed);
+      const dist = Math.round(l.distance || 0);
+      const elapsed = l.elapsed_time || 0;
+      const min = Math.floor(elapsed / 60);
+      const sec = elapsed % 60;
+      let row = `  Lap ${i + 1}: ${dist}m`;
+      if (p) row += ` @ ${p}`;
+      row += ` (${min}:${String(sec).padStart(2, '0')})`;
+      if (l.average_heartrate) row += ` · ${Math.round(l.average_heartrate)} bpm`;
+      if (l.total_elevation_gain > 5) row += ` · +${Math.round(l.total_elevation_gain)}m`;
+      lines.push(row);
+    });
   } else {
     // No laps — fall back to per-km splits
     const splits = detail?.splits_metric;
