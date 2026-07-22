@@ -717,6 +717,7 @@ Key rules:
 - Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
 - For direct station-specific work, weigh total volume against the actual HYROX race demand at that station (e.g. ~75-100 wall ball reps, ~1000m ski/row erg, 50m sled, 200m farmers carry), not load alone. A heavier load done for low total volume (e.g. 30-40 wall ball reps, even at a heavy ball weight) is moderate transfer (2-3) — reserve 4-5 for volume that's close to or exceeds race demand, or clearly extended time-under-tension at that movement.
+- Thrusters (squat-to-overhead-press, with a dumbbell, kettlebell, or barbell) are a near-direct movement match for Wall Balls — same squat-and-explosive-extend pattern, just pressing an implement instead of throwing a ball. Score Wall Balls from thruster volume/load using the SAME direct-work scale as literal wall ball reps (rule above), not capped as a mere "moderate transfer" — high-rep thruster work (especially loaded, e.g. with a weight vest) can and should reach 4-5.
 
 Return JSON only:
 {
