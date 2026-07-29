@@ -149,15 +149,44 @@ function formatPace(speedMs) {
   return `${min}:${String(sec).padStart(2, '0')}/km`;
 }
 
-function buildNotes(act, detail, zones) {
+// Strava's activity object only ever reports total elevation GAIN — there's
+// no "loss" summary field in its API. The only way to get descent is to pull
+// the raw altitude stream and sum the downhill segments ourselves. Small
+// per-point deltas are ignored (only counted once accumulated descent passes
+// the threshold) to avoid GPS altitude jitter inflating the number.
+function computeElevationLoss(altitudePoints) {
+  if (!Array.isArray(altitudePoints) || altitudePoints.length < 2) return null;
+  const NOISE_THRESHOLD_M = 1;
+  let loss = 0;
+  let accDrop = 0;
+  for (let i = 1; i < altitudePoints.length; i++) {
+    const diff = altitudePoints[i] - altitudePoints[i - 1];
+    if (diff < 0) {
+      accDrop += -diff;
+    } else {
+      if (accDrop >= NOISE_THRESHOLD_M) loss += accDrop;
+      accDrop = 0;
+    }
+  }
+  if (accDrop >= NOISE_THRESHOLD_M) loss += accDrop;
+  return Math.round(loss);
+}
+
+function buildNotes(act, detail, zones, elevationLoss) {
   const lines = [];
 
   // Avg pace
   const avgPace = formatPace(detail?.average_speed || act.average_speed);
   if (avgPace) lines.push(`Avg pace: ${avgPace}`);
 
-  // Elevation
-  if (detail?.total_elevation_gain) lines.push(`Elevation: +${Math.round(detail.total_elevation_gain)}m`);
+  // Elevation — gain comes straight from Strava (its own smoothed figure);
+  // loss is our own estimate from the altitude stream (see computeElevationLoss),
+  // shown alongside it whenever we managed to fetch that stream.
+  if (detail?.total_elevation_gain || elevationLoss) {
+    const gain = detail?.total_elevation_gain ? `+${Math.round(detail.total_elevation_gain)}m` : '+0m';
+    const lossStr = elevationLoss != null ? ` / -${elevationLoss}m` : '';
+    lines.push(`Elevation: ${gain}${lossStr}`);
+  }
 
   // Heart rate
   if (detail?.average_heartrate) {
@@ -337,17 +366,22 @@ router.post('/sync', async (_req, res) => {
         ? parseFloat((act.distance / 1000).toFixed(2))
         : null;
 
-      // Fetch detailed activity (laps, splits, HR) + HR zones in parallel
-      let detail = null, zones = null;
+      // Fetch detailed activity (laps, splits, HR) + HR zones + altitude stream (for elevation loss) in parallel
+      let detail = null, zones = null, elevationLoss = null;
       try {
-        [detail, zones] = await Promise.all([
+        const [detailRes, zonesRes, streamsRes] = await Promise.all([
           fetch(`https://www.strava.com/api/v3/activities/${act.id}`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
           fetch(`https://www.strava.com/api/v3/activities/${act.id}/zones`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
+          fetch(`https://www.strava.com/api/v3/activities/${act.id}/streams?keys=altitude&key_by_type=true`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
         ]);
+        detail = detailRes;
+        zones = zonesRes;
+        elevationLoss = computeElevationLoss(streamsRes?.altitude?.data);
       } catch (err) {
-        console.error(`Strava sync: detail/zones fetch failed for activity ${act.id}:`, err.message);
+        console.error(`Strava sync: detail/zones/streams fetch failed for activity ${act.id}:`, err.message);
       }
 
       // Use athlete's perceived exertion from Strava as RPE if available
@@ -355,7 +389,7 @@ router.post('/sync', async (_req, res) => {
         ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
         : null;
 
-      const stravaNotes = buildNotes(act, detail, zones);
+      const stravaNotes = buildNotes(act, detail, zones, elevationLoss);
 
       const dateTypeKey = `${date}|${type}`;
       const existingManual = manualSessionsByDateType.get(dateTypeKey);
@@ -427,13 +461,16 @@ router.post('/backfill-notes', async (_req, res) => {
     for (const doc of toUpdate) {
       const { stravaActivityId } = doc.data();
       try {
-        const [detail, zones] = await Promise.all([
+        const [detail, zones, streams] = await Promise.all([
           fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
           fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/zones`,
             { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
+          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/streams?keys=altitude&key_by_type=true`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
         ]);
-        const freshStravaNotes = buildNotes({ description: detail.description }, detail, zones);
+        const elevationLoss = computeElevationLoss(streams?.altitude?.data);
+        const freshStravaNotes = buildNotes({ description: detail.description }, detail, zones, elevationLoss);
         // Preserve any athlete-written prefix (manual/draft notes) ahead of the marker —
         // only the Strava-derived portion gets refreshed.
         const existingNotes = doc.data().notes || '';
