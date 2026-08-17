@@ -660,6 +660,21 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
+  // Precompute total reps per exercise (sets × reps, summed across weight
+  // brackets) so the model scores off real arithmetic instead of eyeballing
+  // volume from prose — this is what let a 12-rep day and a 180-rep day land
+  // on the identical score, since "high volume" read the same either way.
+  const volumeTotals = {};
+  for (const e of session.extractedExercises?.exercises || []) {
+    if (!e?.name) continue;
+    const reps = e.sets && e.reps ? e.sets * e.reps : (e.reps || 0);
+    if (!reps) continue;
+    volumeTotals[e.name] = (volumeTotals[e.name] || 0) + reps;
+  }
+  const volumeBlock = Object.keys(volumeTotals).length
+    ? `\nComputed total reps per exercise (sets × reps, summed across all weight brackets — this arithmetic is ground truth, don't re-derive it yourself from the notes):\n${Object.entries(volumeTotals).map(([name, reps]) => `- ${name}: ${reps} total reps`).join('\n')}`
+    : '';
+
   const notesLower = (session.notes || '').toLowerCase();
   const mentionsOtherCardioMachine = /\b(assault bike|echo bike|air ?bike|fan bike|spin bike|stationary bike|cycling|bike)\b/.test(notesLower);
   const cardioTransferBlock = mentionsOtherCardioMachine
@@ -688,7 +703,7 @@ Aerobic transfer rules for running sessions:
     : '';
 
   const extractedBlock = extractedList
-    ? `\nStructured exercises extracted from notes:\n${extractedList}`
+    ? `\nStructured exercises extracted from notes:\n${extractedList}${volumeBlock}`
     : '';
 
   const knowledgeBlock = knowledge?.trim()
@@ -716,7 +731,10 @@ Key rules:
 - If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
 - Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
-- For direct station-specific work, weigh total volume against the actual HYROX race demand at that station (e.g. ~75-100 wall ball reps, ~1000m ski/row erg, 50m sled, 200m farmers carry), not load alone. A heavier load done for low total volume (e.g. 30-40 wall ball reps, even at a heavy ball weight) is moderate transfer (2-3) — reserve 4-5 for volume that's close to or exceeds race demand, or clearly extended time-under-tension at that movement.
+- For direct station-specific work, weigh total volume against the actual HYROX race demand at that station (e.g. ~75-100 wall ball reps, ~1000m ski/row erg, 50m sled, 200m farmers carry), not load alone. Use the computed rep totals above when available — do not eyeball volume from the prose. Three tiers, not two:
+  - Below ~50% of race demand (e.g. under ~40 wall ball reps): moderate transfer at best, 2-3, regardless of load.
+  - Roughly race demand, ~50-150% of it (e.g. ~40-115 wall ball reps): strong direct work, 4.
+  - Clearly exceeds race demand, 150%+ (e.g. 115+ wall ball reps — such as 4 rounds of 15+30 = 180 reps): near-maximal direct work, 5. Don't cap this at 4 just because it's "already high volume" — score the actual multiple of race demand.
 - Thrusters (squat-to-overhead-press, with a dumbbell, kettlebell, or barbell) are a near-direct movement match for Wall Balls — same squat-and-explosive-extend pattern, just pressing an implement instead of throwing a ball. Score Wall Balls from thruster volume/load using the SAME direct-work scale as literal wall ball reps (rule above), not capped as a mere "moderate transfer" — high-rep thruster work (especially loaded, e.g. with a weight vest) can and should reach 4-5.
 
 Return JSON only:
