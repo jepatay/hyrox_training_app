@@ -644,6 +644,28 @@ Pick "type" based on the dominant or most structured activity described. If noth
 
 const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
 
+// HYROX Open Men race-standard demand per station — the fixed anchor for
+// what "4" means. Score up to 5 when the session's volume/load/continuity
+// clearly exceeds this; score down toward 1 as it falls further short.
+// (Open Men matches this app's other default division lookups, e.g. HYROX_WEIGHTS.open_men.)
+const STATION_BENCHMARKS = [
+  { key: 'running', label: 'Running', demand: '8 × 1km (8km total) run split across the race, at race pace', equivalent: 'a continuous or interval run/bike/row/ski session of similar total distance or duration at a real training effort (RPE 6+)' },
+  { key: 'skierg', label: 'SkiErg', demand: '1000m continuous', equivalent: '~1000m of SkiErg (or a very similar erg movement) at a real pace' },
+  { key: 'sled_push', label: 'Sled Push', demand: '50m at ~150kg (sled + plates)', equivalent: '~50m of sled push at or near 150kg' },
+  { key: 'sled_pull', label: 'Sled Pull', demand: '50m at ~100kg', equivalent: '~50m of sled pull at or near 100kg' },
+  { key: 'row_erg', label: 'Row Erg', demand: '1000m continuous', equivalent: '~1000m of rowing at a real pace' },
+  { key: 'farmers_carry', label: 'Farmers Carry', demand: '200m carrying 2×24kg', equivalent: '~200m of a loaded carry at or near 48kg total' },
+  { key: 'sandbag_lunges', label: 'Sandbag Lunges', demand: '100m of walking lunges with a 20kg sandbag', equivalent: '~100m of loaded walking lunges at or near 20kg' },
+  { key: 'burpee_broad_jump', label: 'Burpee Broad Jump', demand: '80m of burpee broad jumps', equivalent: '~80m of burpee broad jumps, or an equivalent high-rep burpee/down-up volume (~40-60 reps)' },
+  { key: 'wall_balls', label: 'Wall Balls', demand: '100 reps with a 6kg ball at a 10ft target', equivalent: '~75-100 reps at or near 6kg — thrusters (squat-to-overhead-press with any implement) count too, being a near-direct movement match' },
+];
+
+function renderStationBenchmarks() {
+  return STATION_BENCHMARKS
+    .map(b => `- ${b.label} (race demand: ${b.demand}): 4 = ${b.equivalent}.`)
+    .join('\n');
+}
+
 export async function generateStationScores({ session, knowledge }) {
   const isHyroxSession = session.type === 'hyrox_training' || session.type === 'hyrox_race' || session.type === 'hyrox_competition';
   const isRunSession = session.type === 'running';
@@ -727,23 +749,21 @@ Session data:
 ${extractedBlock}${notesBlock}
 ${knowledgeBlock}
 
-Scoring guide (base each score purely on evidence — do not default low if evidence is present):
-- 5 = direct, station-specific work at meaningful volume/load (e.g. 9km run at threshold pace → running=5; explicit sled push work → sled_push=5)
-- 4 = strong transfer or high-volume indirect work (e.g. full hyrox circuit class → most stations 4; heavy squats → sled_push=4)
-- 3 = moderate transfer (e.g. cycling → running=3; pull exercises → skierg/row=3)
-- 2 = weak indirect transfer
-- 1 = no meaningful contribution
+HYROX OPEN MEN RACE-STANDARD REFERENCE — the fixed anchor for every score. "4" means this station's logged work is roughly equivalent to race demand (similar volume — reps or distance, whichever that station uses — at a similar or heavier load, done in a reasonably continuous/race-like way, not endlessly broken into small rest-heavy sets). Use the computed volume totals above when available instead of eyeballing the prose.
+${renderStationBenchmarks()}
+
+Scoring scale, anchored to the reference above:
+- 5 = clearly EXCEEDS race demand — more volume and/or more load than the benchmark, done unbroken (or close to it) where the movement is inherently continuous, or with extra resistance (weight vest, incline/hill). A load at or above race weight should never pull a score DOWN from what the volume alone would justify — e.g. race weight (or heavier) pushed/carried/lunged for meaningfully more than the benchmark distance is a 5, not a 4.
+- 4 = roughly MATCHES race demand — volume and load both in the same ballpark as the benchmark (very roughly 75-150% of it), or a near-direct movement substitute (e.g. thrusters for wall balls) at that volume/load.
+- 3 = moderate — roughly 40-75% of race demand, OR full volume but broken into many small sets with substantial rest (real work, but not race-specific continuous output), OR a genuine but indirect transfer exercise at meaningful volume.
+- 2 = weak — well under half of race demand and/or only a loose/indirect transfer.
+- 1 = no meaningful contribution — no evidence at all.
 
 Key rules:
 - If running distance ≥ 5 km at RPE ≥ 6, running score = 4 or 5.
 - If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
-- Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
+- Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence, compared against the reference above, determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
-- For direct station-specific work, weigh total volume (reps OR distance — whichever that station is measured in) against the actual HYROX race demand at that station, not load alone. Use the computed totals above when available — do not eyeball volume from the prose. Race-demand benchmarks (open division): wall balls ~75-100 reps, ski/row erg ~1000m, sled push/pull 50m at ~150kg push / ~100kg pull, farmers carry 200m. Three tiers, not two:
-  - Below ~50% of race demand (e.g. under ~40 wall ball reps, under 25m sled): moderate transfer at best, 2-3, regardless of load.
-  - Roughly race demand, ~50-150% of it (e.g. ~40-115 wall ball reps, 25-75m sled): strong direct work, 4.
-  - Clearly exceeds race demand, 150%+ in EITHER volume or load (e.g. 115+ wall ball reps such as 4 rounds of 15+30=180; or 75m+ sled; or race-standard/heavier load — e.g. 170kg — pushed for meaningfully more than the standard 50m, such as 10x12m=120m): near-maximal direct work, 5. Don't cap this at 4 just because it's "already high volume/load" — score the actual multiple of race demand, and a load at or above race weight should never pull the score DOWN from what the volume alone would justify.
-- Thrusters (squat-to-overhead-press, with a dumbbell, kettlebell, or barbell) are a near-direct movement match for Wall Balls — same squat-and-explosive-extend pattern, just pressing an implement instead of throwing a ball. Score Wall Balls from thruster volume/load using the SAME direct-work scale as literal wall ball reps (rule above), not capped as a mere "moderate transfer" — high-rep thruster work (especially loaded, e.g. with a weight vest) can and should reach 4-5.
 
 Return JSON only:
 {
