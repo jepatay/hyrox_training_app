@@ -645,25 +645,138 @@ Pick "type" based on the dominant or most structured activity described. If noth
 const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
 
 // HYROX Open Men race-standard demand per station — the fixed anchor for
-// what "4" means. Score up to 5 when the session's volume/load/continuity
-// clearly exceeds this; score down toward 1 as it falls further short.
-// (Open Men matches this app's other default division lookups, e.g. HYROX_WEIGHTS.open_men.)
+// what "4" means. (Open Men matches this app's other default division
+// lookups, e.g. HYROX_WEIGHTS.open_men.)
+//
+// Two kinds of equivalence, matched to how each station is actually demanding:
+// - 'work' stations (sled push/pull, farmers carry, sandbag lunges, wall balls):
+//   an external implement is loaded, so mechanical work (weight × volume) is
+//   the equalizer — heavier weight for proportionally fewer reps/distance can
+//   be genuinely equivalent, not automatically "less".
+// - 'cardio' stations (running, skierg, row erg): no implement weight, so the
+//   equalizer is effort relative to race pace — a shorter but much harder
+//   session can outweigh a longer easy one (see rpeIntensityMultiplier).
+// - 'bodyweight' (burpee broad jump): no implement weight; a worn vest is the
+//   only load variable, handled as a flat bonus.
 const STATION_BENCHMARKS = [
-  { key: 'running', label: 'Running', demand: '8 × 1km (8km total) run split across the race, at race pace', equivalent: 'a continuous or interval run/bike/row/ski session of similar total distance or duration at a real training effort (RPE 6+)' },
-  { key: 'skierg', label: 'SkiErg', demand: '1000m continuous', equivalent: '~1000m of SkiErg (or a very similar erg movement) at a real pace' },
-  { key: 'sled_push', label: 'Sled Push', demand: '50m at ~150kg (sled + plates)', equivalent: '~50m of sled push at or near 150kg' },
-  { key: 'sled_pull', label: 'Sled Pull', demand: '50m at ~100kg', equivalent: '~50m of sled pull at or near 100kg' },
-  { key: 'row_erg', label: 'Row Erg', demand: '1000m continuous', equivalent: '~1000m of rowing at a real pace' },
-  { key: 'farmers_carry', label: 'Farmers Carry', demand: '200m carrying 2×24kg', equivalent: '~200m of a loaded carry at or near 48kg total' },
-  { key: 'sandbag_lunges', label: 'Sandbag Lunges', demand: '100m of walking lunges with a 20kg sandbag', equivalent: '~100m of loaded walking lunges at or near 20kg' },
-  { key: 'burpee_broad_jump', label: 'Burpee Broad Jump', demand: '80m of burpee broad jumps', equivalent: '~80m of burpee broad jumps, or an equivalent high-rep burpee/down-up volume (~40-60 reps)' },
-  { key: 'wall_balls', label: 'Wall Balls', demand: '100 reps with a 6kg ball at a 10ft target', equivalent: '~75-100 reps at or near 6kg — thrusters (squat-to-overhead-press with any implement) count too, being a near-direct movement match' },
+  { key: 'running', label: 'Running', demand: '8 × 1km (8km total) run split across the race, at race pace', kind: 'cardio', raceDistanceM: 8000 },
+  { key: 'skierg', label: 'SkiErg', demand: '1000m continuous', kind: 'cardio', raceDistanceM: 1000 },
+  { key: 'sled_push', label: 'Sled Push', demand: '50m at ~150kg (sled + plates)', kind: 'work', raceWeightKg: 150, raceVolume: 50, volumeUnit: 'm' },
+  { key: 'sled_pull', label: 'Sled Pull', demand: '50m at ~100kg', kind: 'work', raceWeightKg: 100, raceVolume: 50, volumeUnit: 'm' },
+  { key: 'row_erg', label: 'Row Erg', demand: '1000m continuous', kind: 'cardio', raceDistanceM: 1000 },
+  { key: 'farmers_carry', label: 'Farmers Carry', demand: '200m carrying 2×24kg', kind: 'work', raceWeightKg: 48, raceVolume: 200, volumeUnit: 'm' },
+  { key: 'sandbag_lunges', label: 'Sandbag Lunges', demand: '100m of walking lunges with a 20kg sandbag', kind: 'work', raceWeightKg: 20, raceVolume: 100, volumeUnit: 'm' },
+  { key: 'burpee_broad_jump', label: 'Burpee Broad Jump', demand: '80m of burpee broad jumps', kind: 'bodyweight', raceVolume: 80, volumeUnit: 'm', repsEquivalent: 50 },
+  { key: 'wall_balls', label: 'Wall Balls', demand: '100 reps with a 6kg ball at a 10ft target', kind: 'work', raceWeightKg: 6, raceVolume: 100, volumeUnit: 'reps' },
 ];
 
 function renderStationBenchmarks() {
-  return STATION_BENCHMARKS
-    .map(b => `- ${b.label} (race demand: ${b.demand}): 4 = ${b.equivalent}.`)
-    .join('\n');
+  return STATION_BENCHMARKS.map(b => `- ${b.label}: race demand ${b.demand}.`).join('\n');
+}
+
+// Effort relative to race pace, applied to distance for cardio stations —
+// a short, very hard interval session can be MORE demanding than a longer
+// one at race effort, so raw distance alone understates it.
+function rpeIntensityMultiplier(rpe) {
+  if (rpe == null) return 1.0;
+  if (rpe <= 4) return 0.6;   // easy / Zone 2
+  if (rpe <= 6) return 0.85;  // moderate / tempo
+  if (rpe === 7) return 1.0;  // threshold, ≈ race pace
+  if (rpe === 8) return 1.3;  // hard intervals
+  return 1.6;                 // 9-10: max / VO2max intervals
+}
+
+const EXTRACTION_NAME_TO_STATION = {
+  sledPush: 'sled_push',
+  sledPull: 'sled_pull',
+  farmersCarry: 'farmers_carry',
+  wallBalls: 'wall_balls',
+  skiErg: 'skierg',
+  rowErg: 'row_erg',
+  burpeeBroadJump: 'burpee_broad_jump',
+  walkingLunges: 'sandbag_lunges',
+  run: 'running',
+};
+
+// Computes, per station, how the session's logged volume/load/intensity
+// compares to HYROX Open Men race demand — as a single ratio the model can
+// apply directly, instead of it eyeballing "high volume" from prose (which
+// is what let very different sessions land on the identical score before).
+function computeStationEquivalence(session) {
+  const byStation = {};
+  const bump = (key) => (byStation[key] ||= { workKg: 0, distanceM: 0, reps: 0 });
+
+  for (const e of session.extractedExercises?.exercises || []) {
+    if (!e?.name) continue;
+    let stationKey = EXTRACTION_NAME_TO_STATION[e.name];
+    // Thrusters are a near-direct movement match for wall balls (squat-to-press
+    // vs. squat-to-throw) — the extraction schema has no dedicated slot for
+    // them, so they land in "other" with a note.
+    if (!stationKey && e.name === 'other' && /thruster/i.test(e.notes || '')) stationKey = 'wall_balls';
+    if (!stationKey) continue;
+
+    const volume = e.distanceM
+      ? (e.sets || 1) * e.distanceM
+      : (e.sets && e.reps ? e.sets * e.reps : (e.reps || 0));
+    if (!volume) continue;
+
+    const station = bump(stationKey);
+    if (e.weightKg) {
+      station.workKg += e.weightKg * volume;
+    } else if (e.distanceM) {
+      station.distanceM += volume;
+    } else {
+      station.reps += volume;
+    }
+  }
+
+  if (session.runningDistance) {
+    bump('running').distanceM += session.runningDistance * 1000;
+  }
+
+  const vestBonus = session.weightVest ? 1.15 : 1.0;
+  const intensity = rpeIntensityMultiplier(session.rpe);
+
+  const results = {};
+  for (const b of STATION_BENCHMARKS) {
+    const data = byStation[b.key];
+    if (!data) continue;
+
+    if (b.kind === 'work') {
+      if (data.workKg > 0) {
+        const benchmark = b.raceWeightKg * b.raceVolume;
+        results[b.key] = {
+          ratio: data.workKg / benchmark,
+          basis: `${Math.round(data.workKg).toLocaleString()} kg·${b.volumeUnit} logged (weight × volume) vs ${benchmark.toLocaleString()} kg·${b.volumeUnit} race demand (${b.raceWeightKg}kg × ${b.raceVolume}${b.volumeUnit})`,
+        };
+      } else {
+        // No weight recorded for this movement — fall back to raw volume,
+        // conservatively assuming it was near race-standard load.
+        const rawVolume = data.distanceM || data.reps;
+        if (rawVolume) {
+          results[b.key] = {
+            ratio: rawVolume / b.raceVolume,
+            basis: `${rawVolume}${b.volumeUnit} logged (no weight recorded, assumed near race-standard load) vs ${b.raceVolume}${b.volumeUnit} race demand`,
+          };
+        }
+      }
+    } else if (b.kind === 'cardio' && data.distanceM > 0) {
+      const effectiveDistance = data.distanceM * intensity;
+      results[b.key] = {
+        ratio: effectiveDistance / b.raceDistanceM,
+        basis: `${Math.round(data.distanceM)}m × ${intensity}x intensity (RPE ${session.rpe ?? '?'}) = ${Math.round(effectiveDistance)}m effective vs ${b.raceDistanceM}m race demand`,
+      };
+    } else if (b.kind === 'bodyweight') {
+      const rawVolume = (data.distanceM || (data.reps ? data.reps * (b.raceVolume / b.repsEquivalent) : 0)) * vestBonus;
+      if (rawVolume) {
+        results[b.key] = {
+          ratio: rawVolume / b.raceVolume,
+          basis: `${Math.round(rawVolume)}${b.volumeUnit}-equivalent logged${session.weightVest ? ' (+15% for weight vest)' : ''} vs ${b.raceVolume}${b.volumeUnit} race demand`,
+        };
+      }
+    }
+  }
+  return results;
 }
 
 export async function generateStationScores({ session, knowledge }) {
@@ -682,27 +795,13 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
-  // Precompute total volume per exercise — reps (sets × reps) for rep-based
-  // work, distance (sets × distanceM) for distance-based work like sled
-  // push/pull or farmers carry — so the model scores off real arithmetic
-  // instead of eyeballing volume from prose. Without this, both rep totals
-  // ("10 rounds of 12m" vs. a single 50m push) and rep counts read as
-  // similarly vague "high volume" and landed on the same score.
-  const repTotals = {};
-  const distTotals = {};
-  for (const e of session.extractedExercises?.exercises || []) {
-    if (!e?.name) continue;
-    const reps = e.sets && e.reps ? e.sets * e.reps : (e.reps || 0);
-    if (reps) repTotals[e.name] = (repTotals[e.name] || 0) + reps;
-    const dist = e.distanceM ? (e.sets || 1) * e.distanceM : 0;
-    if (dist) distTotals[e.name] = (distTotals[e.name] || 0) + dist;
-  }
-  const volumeLines = [
-    ...Object.entries(repTotals).map(([name, reps]) => `- ${name}: ${reps} total reps`),
-    ...Object.entries(distTotals).map(([name, dist]) => `- ${name}: ${dist}m total distance`),
-  ];
-  const volumeBlock = volumeLines.length
-    ? `\nComputed total volume per exercise (sets × reps/distance, summed across all weight brackets and rounds — this arithmetic is ground truth, don't re-derive it yourself from the notes):\n${volumeLines.join('\n')}`
+  const equivalence = computeStationEquivalence(session);
+  const equivalenceLines = Object.entries(equivalence).map(([key, { ratio, basis }]) => {
+    const label = STATION_BENCHMARKS.find(b => b.key === key)?.label || key;
+    return `- ${label}: ${basis} → ${Math.round(ratio * 100)}% of race demand`;
+  });
+  const volumeBlock = equivalenceLines.length
+    ? `\nComputed race-equivalence per station (weight × volume for loaded stations, intensity-adjusted distance for cardio — this arithmetic is ground truth, use it directly rather than re-deriving volume from the notes):\n${equivalenceLines.join('\n')}\nTier mapping for these percentages: ≥150% → 5, 75-150% → 4, 40-75% → 3, under 40% (but nonzero) → 2.`
     : '';
 
   const notesLower = (session.notes || '').toLowerCase();
@@ -749,18 +848,21 @@ Session data:
 ${extractedBlock}${notesBlock}
 ${knowledgeBlock}
 
-HYROX OPEN MEN RACE-STANDARD REFERENCE — the fixed anchor for every score. "4" means this station's logged work is roughly equivalent to race demand (similar volume — reps or distance, whichever that station uses — at a similar or heavier load, done in a reasonably continuous/race-like way, not endlessly broken into small rest-heavy sets). Use the computed volume totals above when available instead of eyeballing the prose.
+HYROX OPEN MEN RACE-STANDARD REFERENCE — the fixed anchor for every score.
 ${renderStationBenchmarks()}
 
-Scoring scale, anchored to the reference above:
-- 5 = clearly EXCEEDS race demand — more volume and/or more load than the benchmark, done unbroken (or close to it) where the movement is inherently continuous, or with extra resistance (weight vest, incline/hill). A load at or above race weight should never pull a score DOWN from what the volume alone would justify — e.g. race weight (or heavier) pushed/carried/lunged for meaningfully more than the benchmark distance is a 5, not a 4.
-- 4 = roughly MATCHES race demand — volume and load both in the same ballpark as the benchmark (very roughly 75-150% of it), or a near-direct movement substitute (e.g. thrusters for wall balls) at that volume/load.
-- 3 = moderate — roughly 40-75% of race demand, OR full volume but broken into many small sets with substantial rest (real work, but not race-specific continuous output), OR a genuine but indirect transfer exercise at meaningful volume.
-- 2 = weak — well under half of race demand and/or only a loose/indirect transfer.
-- 1 = no meaningful contribution — no evidence at all.
+Scoring scale:
+- Wherever the "Computed race-equivalence" figures above give a percentage for a station, USE THAT PERCENTAGE via its tier mapping — that arithmetic (weight × volume for loaded stations, RPE-adjusted distance for cardio) already accounts for load, distance/reps, and intensity together, correctly. Do not override it with a lower score just because the volume or duration "looks short" — a heavier load or a harder effort can legitimately make a shorter session equivalent to or greater than race demand.
+- For stations with no computed percentage (no matching structured data), judge qualitatively against the reference above and the notes/knowledge library:
+  - 5 = clearly exceeds race demand in volume, load, or intensity, done in a genuinely race-like continuous manner.
+  - 4 = roughly matches race demand, or a near-direct movement substitute (e.g. thrusters for wall balls, an assault bike for running/cardio) at equivalent volume/effort.
+  - 3 = roughly 40-75% of race demand, OR full volume broken into many small rest-heavy sets (real work, but not race-specific continuous output), OR a genuine indirect transfer exercise at meaningful volume.
+  - 2 = well under half of race demand, or only a loose/indirect transfer.
+  - 1 = no meaningful contribution — no evidence at all.
+- A weight vest or meaningful incline/hill adds difficulty beyond what raw distance/reps shows — factor it in as pushing toward the top of whichever tier otherwise applies, especially for running, burpee broad jump, and sandbag lunges.
 
 Key rules:
-- If running distance ≥ 5 km at RPE ≥ 6, running score = 4 or 5.
+- If running distance ≥ 5 km at RPE ≥ 6 and no computed percentage is available, running score = 4 or 5.
 - If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
 - Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence, compared against the reference above, determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
