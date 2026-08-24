@@ -364,13 +364,17 @@ Which stations or physical qualities are the biggest gaps relative to the upcomi
   return chat(prompt, 1000);
 }
 
-// Extracts structured exercise/workout data from session notes in the background
+// Extracts structured exercise/workout data from session notes in the background.
+// Multi-round circuits written out in full (e.g. 10 repeated rounds of a
+// 7-exercise block) easily run 1500-2000+ chars — a low truncation here
+// silently cuts off mid-round, undercounting sets for whichever exercises
+// happen to fall past the cutoff.
 export async function extractExercisesFromNotes({ type, notes }) {
   if (!notes?.trim()) return null;
   const prompt = `Extract structured workout data from this training session note. Return JSON only.
 
 Session type: ${type}
-Notes: "${notes.trim().slice(0, 600)}"
+Notes: "${notes.trim().slice(0, 4000)}"
 
 Return:
 {
@@ -828,7 +832,7 @@ Aerobic transfer rules for running sessions:
     : '';
 
   const notesBlock = session.notes?.trim()
-    ? `\nFreeform session notes (always use this — may contain detail not captured in structured exercises):\n"${session.notes.trim().slice(0, 1200)}"`
+    ? `\nFreeform session notes (always use this — may contain detail not captured in structured exercises):\n"${session.notes.trim().slice(0, 4000)}"`
     : '';
 
   const extractedBlock = extractedList
