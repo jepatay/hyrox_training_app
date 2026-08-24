@@ -660,19 +660,27 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
-  // Precompute total reps per exercise (sets × reps, summed across weight
-  // brackets) so the model scores off real arithmetic instead of eyeballing
-  // volume from prose — this is what let a 12-rep day and a 180-rep day land
-  // on the identical score, since "high volume" read the same either way.
-  const volumeTotals = {};
+  // Precompute total volume per exercise — reps (sets × reps) for rep-based
+  // work, distance (sets × distanceM) for distance-based work like sled
+  // push/pull or farmers carry — so the model scores off real arithmetic
+  // instead of eyeballing volume from prose. Without this, both rep totals
+  // ("10 rounds of 12m" vs. a single 50m push) and rep counts read as
+  // similarly vague "high volume" and landed on the same score.
+  const repTotals = {};
+  const distTotals = {};
   for (const e of session.extractedExercises?.exercises || []) {
     if (!e?.name) continue;
     const reps = e.sets && e.reps ? e.sets * e.reps : (e.reps || 0);
-    if (!reps) continue;
-    volumeTotals[e.name] = (volumeTotals[e.name] || 0) + reps;
+    if (reps) repTotals[e.name] = (repTotals[e.name] || 0) + reps;
+    const dist = e.distanceM ? (e.sets || 1) * e.distanceM : 0;
+    if (dist) distTotals[e.name] = (distTotals[e.name] || 0) + dist;
   }
-  const volumeBlock = Object.keys(volumeTotals).length
-    ? `\nComputed total reps per exercise (sets × reps, summed across all weight brackets — this arithmetic is ground truth, don't re-derive it yourself from the notes):\n${Object.entries(volumeTotals).map(([name, reps]) => `- ${name}: ${reps} total reps`).join('\n')}`
+  const volumeLines = [
+    ...Object.entries(repTotals).map(([name, reps]) => `- ${name}: ${reps} total reps`),
+    ...Object.entries(distTotals).map(([name, dist]) => `- ${name}: ${dist}m total distance`),
+  ];
+  const volumeBlock = volumeLines.length
+    ? `\nComputed total volume per exercise (sets × reps/distance, summed across all weight brackets and rounds — this arithmetic is ground truth, don't re-derive it yourself from the notes):\n${volumeLines.join('\n')}`
     : '';
 
   const notesLower = (session.notes || '').toLowerCase();
@@ -731,10 +739,10 @@ Key rules:
 - If session type is hyrox_training/hyrox_race and no notes say otherwise, baseline all stations at 3–4 then adjust for detail.
 - Do NOT apply a blanket "most scores should be 1-2" rule — let the evidence determine each score independently.
 - Only score a station low (1–2) if there is genuinely no evidence of contribution.
-- For direct station-specific work, weigh total volume against the actual HYROX race demand at that station (e.g. ~75-100 wall ball reps, ~1000m ski/row erg, 50m sled, 200m farmers carry), not load alone. Use the computed rep totals above when available — do not eyeball volume from the prose. Three tiers, not two:
-  - Below ~50% of race demand (e.g. under ~40 wall ball reps): moderate transfer at best, 2-3, regardless of load.
-  - Roughly race demand, ~50-150% of it (e.g. ~40-115 wall ball reps): strong direct work, 4.
-  - Clearly exceeds race demand, 150%+ (e.g. 115+ wall ball reps — such as 4 rounds of 15+30 = 180 reps): near-maximal direct work, 5. Don't cap this at 4 just because it's "already high volume" — score the actual multiple of race demand.
+- For direct station-specific work, weigh total volume (reps OR distance — whichever that station is measured in) against the actual HYROX race demand at that station, not load alone. Use the computed totals above when available — do not eyeball volume from the prose. Race-demand benchmarks (open division): wall balls ~75-100 reps, ski/row erg ~1000m, sled push/pull 50m at ~150kg push / ~100kg pull, farmers carry 200m. Three tiers, not two:
+  - Below ~50% of race demand (e.g. under ~40 wall ball reps, under 25m sled): moderate transfer at best, 2-3, regardless of load.
+  - Roughly race demand, ~50-150% of it (e.g. ~40-115 wall ball reps, 25-75m sled): strong direct work, 4.
+  - Clearly exceeds race demand, 150%+ in EITHER volume or load (e.g. 115+ wall ball reps such as 4 rounds of 15+30=180; or 75m+ sled; or race-standard/heavier load — e.g. 170kg — pushed for meaningfully more than the standard 50m, such as 10x12m=120m): near-maximal direct work, 5. Don't cap this at 4 just because it's "already high volume/load" — score the actual multiple of race demand, and a load at or above race weight should never pull the score DOWN from what the volume alone would justify.
 - Thrusters (squat-to-overhead-press, with a dumbbell, kettlebell, or barbell) are a near-direct movement match for Wall Balls — same squat-and-explosive-extend pattern, just pressing an implement instead of throwing a ball. Score Wall Balls from thruster volume/load using the SAME direct-work scale as literal wall ball reps (rule above), not capped as a mere "moderate transfer" — high-rep thruster work (especially loaded, e.g. with a weight vest) can and should reach 4-5.
 
 Return JSON only:
