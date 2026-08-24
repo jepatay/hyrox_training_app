@@ -391,8 +391,10 @@ Return:
   ]
 }
 
-Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.`;
-  return chatJson(prompt, 400);
+Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.
+
+If the notes describe a circuit as "N rounds of the following:" (or "N rounds of:", "repeat N times", etc.) followed by a list of exercises, that round count is the "sets" value for EVERY exercise in that list — apply it to each one individually, even though the notes only state it once. E.g. "10 rounds of: 12m sled push 170kg, 12m sled pull 170kg" means sledPush has sets=10 and sledPull has sets=10, each independently — not sets=1 for either.`;
+  return chatJson(prompt, 800);
 }
 
 export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
@@ -714,8 +716,9 @@ function computeStationEquivalence(session) {
     let stationKey = EXTRACTION_NAME_TO_STATION[e.name];
     // Thrusters are a near-direct movement match for wall balls (squat-to-press
     // vs. squat-to-throw) — the extraction schema has no dedicated slot for
-    // them, so they land in "other" with a note.
-    if (!stationKey && e.name === 'other' && /thruster/i.test(e.notes || '')) stationKey = 'wall_balls';
+    // them, so check the notes regardless of what name it landed under (could
+    // be "other", or "squat" since a thruster is squat-shaped).
+    if (!stationKey && /thruster/i.test(e.notes || '')) stationKey = 'wall_balls';
     if (!stationKey) continue;
 
     const volume = e.distanceM
@@ -782,6 +785,20 @@ function computeStationEquivalence(session) {
   return results;
 }
 
+// Deterministic tier lookup for a computed race-equivalence ratio — kept
+// separate from the LLM entirely. Text instructions telling the model to
+// "use this percentage directly" were not reliably obeyed; it kept blending
+// in other qualitative signals (like rest between rounds) even when the
+// precomputed number said otherwise. For any station this function can
+// compute, that's a bug we can just remove by not asking the model at all.
+function tierFromRatio(ratio) {
+  if (ratio >= 1.5) return 5;
+  if (ratio >= 0.75) return 4;
+  if (ratio >= 0.4) return 3;
+  if (ratio > 0) return 2;
+  return 1;
+}
+
 export async function generateStationScores({ session, knowledge }) {
   const isHyroxSession = session.type === 'hyrox_training' || session.type === 'hyrox_race' || session.type === 'hyrox_competition';
   const isRunSession = session.type === 'running';
@@ -804,7 +821,7 @@ export async function generateStationScores({ session, knowledge }) {
     return `- ${label}: ${basis} → ${Math.round(ratio * 100)}% of race demand`;
   });
   const volumeBlock = equivalenceLines.length
-    ? `\nComputed race-equivalence per station (weight × volume for loaded stations, intensity-adjusted distance for cardio — this arithmetic is ground truth, use it directly rather than re-deriving volume from the notes):\n${equivalenceLines.join('\n')}\nTier mapping for these percentages: ≥150% → 5, 75-150% → 4, 40-75% → 3, under 40% (but nonzero) → 2.`
+    ? `\nComputed race-equivalence per station (weight × volume for loaded stations, intensity-adjusted distance for cardio) — FOR YOUR CONTEXT ONLY, these stations' final scores are already decided by this arithmetic and will NOT use whatever value you return for them, so don't spend effort second-guessing or overriding these specific ones:\n${equivalenceLines.join('\n')}`
     : '';
 
   const notesLower = (session.notes || '').toLowerCase();
@@ -854,8 +871,7 @@ ${knowledgeBlock}
 HYROX OPEN MEN RACE-STANDARD REFERENCE — the fixed anchor for every score.
 ${renderStationBenchmarks()}
 
-Scoring scale:
-- Wherever the "Computed race-equivalence" figures above give a percentage for a station, USE THAT PERCENTAGE via its tier mapping — that arithmetic (weight × volume for loaded stations, RPE-adjusted distance for cardio) already accounts for load, distance/reps, and intensity together, correctly. Do not override it with a lower score just because the volume or duration "looks short" — a heavier load or a harder effort can legitimately make a shorter session equivalent to or greater than race demand.
+Scoring scale (this only affects stations WITHOUT a computed percentage above — the rest are already locked in):
 - For stations with no computed percentage (no matching structured data), judge qualitatively against the reference above and the notes/knowledge library:
   - 5 = clearly exceeds race demand in volume, load, or intensity, done in a genuinely race-like continuous manner.
   - 4 = roughly matches race demand, or a near-direct movement substitute (e.g. thrusters for wall balls, an assault bike for running/cardio) at equivalent volume/effort.
@@ -887,6 +903,12 @@ Return JSON only:
   if (!result) return null;
   const scores = {};
   for (const key of STATION_KEYS) {
+    // Stations with a computed race-equivalence ratio are scored deterministically
+    // in code, not by the model — see tierFromRatio for why.
+    if (equivalence[key]) {
+      scores[key] = tierFromRatio(equivalence[key].ratio);
+      continue;
+    }
     const v = Number(result[key]);
     scores[key] = Number.isFinite(v) ? Math.min(5, Math.max(1, Math.round(v))) : 1;
   }
