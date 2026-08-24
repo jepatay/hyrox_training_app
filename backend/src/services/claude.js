@@ -96,8 +96,7 @@ Today's date: ${today}
 
 Session logged (${whenLabel} — ${sessionDate}):
 - Type: ${session.type}
-- Class/group session: ${session.isClass ? 'Yes — structure set by instructor' : 'No — self-directed'}
-- Weight vest (9 kg): ${session.weightVest ? 'Yes — worn during session' : 'No'}
+- Class/group session: ${session.isClass ? 'Yes — structure set by instructor' : 'No — self-directed'}${session.weightVest ? '\n- Weight vest (9 kg): worn during session' : ''}
 - Duration: ${session.duration || '?'} minutes
 - RPE: ${session.rpe || '?'}/10${session.volume ? ` | Volume: ${session.volume}` : ''}${session.sessionLoad ? ` | Session Load: ${session.sessionLoad}` : ''}
 - Feeling: ${session.feeling || 'not specified'}
