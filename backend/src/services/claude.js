@@ -393,8 +393,10 @@ Return:
 
 Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.
 
-If the notes describe a circuit as "N rounds of the following:" (or "N rounds of:", "repeat N times", etc.) followed by a list of exercises, that round count is the "sets" value for EVERY exercise in that list — apply it to each one individually, even though the notes only state it once. E.g. "10 rounds of: 12m sled push 170kg, 12m sled pull 170kg" means sledPush has sets=10 and sledPull has sets=10, each independently — not sets=1 for either.`;
-  return chatJson(prompt, 800);
+If the notes describe a circuit as "N rounds of the following:" (or "N rounds of:", "repeat N times", etc.) followed by a list of exercises, that round count is the "sets" value for EVERY exercise in that list — apply it to each one individually, even though the notes only state it once. E.g. "10 rounds of: 12m sled push 170kg, 12m sled pull 170kg" means sledPush has sets=10 and sledPull has sets=10, each independently — not sets=1 for either.
+
+The notes may instead repeat the SAME block under explicit labels — "Round 1:", "Round 2:", ... "Round N:" — each restating the full exercise list, rather than a single "N rounds of:" prefix. Treat this the same way: for every exercise, SUM its reps/distance across ALL labeled rounds where it appears into ONE combined total — count every round label actually present, don't assume or guess a smaller number. If an exercise's WEIGHT changes partway through (e.g. 50kg for rounds 1-4, then 40kg for rounds 5-6), output SEPARATE entries per weight bracket, each with reps/distance totaled only across the rounds logged at that weight — never report just a single round's numbers for an exercise that appears in multiple rounds.`;
+  return chatJson(prompt, 1000);
 }
 
 export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
@@ -714,11 +716,17 @@ function computeStationEquivalence(session) {
   for (const e of session.extractedExercises?.exercises || []) {
     if (!e?.name) continue;
     let stationKey = EXTRACTION_NAME_TO_STATION[e.name];
-    // Thrusters are a near-direct movement match for wall balls (squat-to-press
-    // vs. squat-to-throw) — the extraction schema has no dedicated slot for
-    // them, so check the notes regardless of what name it landed under (could
-    // be "other", or "squat" since a thruster is squat-shaped).
-    if (!stationKey && /thruster/i.test(e.notes || '')) stationKey = 'wall_balls';
+    // Squat-pattern movements transfer to wall balls at different strengths:
+    // thrusters add the explosive press/throw phase wall balls actually need,
+    // so they get full credit; a plain squat shares only the squat-down half
+    // of the movement, so it earns partial credit, not a full match.
+    let creditMultiplier = 1.0;
+    if (!stationKey && /thruster/i.test(e.notes || '')) {
+      stationKey = 'wall_balls';
+    } else if (!stationKey && e.name === 'squat') {
+      stationKey = 'wall_balls';
+      creditMultiplier = 0.35;
+    }
     if (!stationKey) continue;
 
     const volume = e.distanceM
@@ -728,11 +736,11 @@ function computeStationEquivalence(session) {
 
     const station = bump(stationKey);
     if (e.weightKg) {
-      station.workKg += e.weightKg * volume;
+      station.workKg += e.weightKg * volume * creditMultiplier;
     } else if (e.distanceM) {
-      station.distanceM += volume;
+      station.distanceM += volume * creditMultiplier;
     } else {
-      station.reps += volume;
+      station.reps += volume * creditMultiplier;
     }
   }
 
