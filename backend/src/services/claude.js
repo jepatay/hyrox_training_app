@@ -116,6 +116,8 @@ Also draw on current sports science and best practices for HYROX and endurance t
 
 Write 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.
 
+DO NOT invent precision the data doesn't support. If the notes only give a TOTAL time for a round covering several exercises, that tells you the round as a whole was faster or slower — it does NOT tell you which specific exercise within it changed pace, felt different, or caused the difference. Only attribute a pacing observation to one particular movement if the notes actually break out that movement's own time/reps/pace separately. Otherwise, comment at the level the data actually supports (e.g. "round 3 was your slowest" — not "the burpees in round 3 were slower").
+
 Then, if the session notes are missing context that would change your feedback (e.g. how a specific movement felt, the load/weight used, fatigue level, technique cues), ask 1-2 direct, specific follow-up questions to fill that gap. Only ask if genuinely useful — skip if the notes are already detailed enough. Do not ask generic questions like "how did it go".
 
 Return plain text: the feedback first, then any follow-up questions on their own lines.`;
@@ -168,7 +170,7 @@ Your initial feedback to the athlete:
 Athlete's reply:
 "${userReply}"
 
-Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific. Do not ask further questions. This is the closing word on this session.`;
+Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.`;
 
   return chat(prompt, 450);
 }
@@ -393,9 +395,8 @@ Return:
 
 Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.
 
-If the notes describe a circuit as "N rounds of the following:" (or "N rounds of:", "repeat N times", etc.) followed by a list of exercises, that round count is the "sets" value for EVERY exercise in that list — apply it to each one individually, even though the notes only state it once. E.g. "10 rounds of: 12m sled push 170kg, 12m sled pull 170kg" means sledPush has sets=10 and sledPull has sets=10, each independently — not sets=1 for either.
-
-The notes may instead repeat the SAME block under explicit labels — "Round 1:", "Round 2:", ... "Round N:" — each restating the full exercise list, rather than a single "N rounds of:" prefix. Treat this the same way: for every exercise, SUM its reps/distance across ALL labeled rounds where it appears into ONE combined total — count every round label actually present, don't assume or guess a smaller number. If an exercise's WEIGHT changes partway through (e.g. 50kg for rounds 1-4, then 40kg for rounds 5-6), output SEPARATE entries per weight bracket, each with reps/distance totaled only across the rounds logged at that weight — never report just a single round's numbers for an exercise that appears in multiple rounds.`;
+CIRCUITS AND REPEATED ROUNDS — read this carefully, it's the most common source of error:
+Athletes write repeated rounds in many different ways: an explicit "N rounds of the following:" prefix, numbered labels ("Round 1:", "Round 2:", ... "Round N:"), or simply the same (or near-identical) block of exercises appearing multiple times back-to-back with no explicit count or numbering at all (e.g. separated by blank lines, or each just starting with a time like "round, 5 min 51 seconds"). Whatever the format, apply ONE general rule: COUNT how many times each block of exercises actually appears in the text — do not rely on the notes stating a count, and do not guess or under-count — then for every exercise, SUM its reps/distance across ALL of those repetitions into ONE combined total (e.g. an exercise appearing in 4 near-identical blocks has its reps/distance multiplied by 4, not reported as if it happened once). If an exercise's weight changes partway through the repeated blocks, output SEPARATE entries per weight bracket, each totaled only across the repetitions logged at that weight. A line that appears only ONCE in the notes (not part of any repeated block) keeps its stated numbers as-is — don't multiply it by the round count of a different, repeated section.`;
   return chatJson(prompt, 1000);
 }
 
