@@ -81,6 +81,7 @@ router.get('/station-trends', async (req, res) => {
           ratio: data.ratio,
           volumeRatio: data.volumeRatio,
           loadRatio: data.loadRatio,
+          basis: data.basis,
         });
       }
     }

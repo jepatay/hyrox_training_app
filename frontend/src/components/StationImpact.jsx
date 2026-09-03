@@ -24,6 +24,7 @@ const SCORE_COLORS = {
 
 export default function StationImpact({ scores, equivalence, sessionId, onUpdate }) {
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedKey, setExpandedKey] = useState(null);
 
   async function handleRefresh() {
     if (!sessionId || refreshing) return;
@@ -61,10 +62,13 @@ export default function StationImpact({ scores, equivalence, sessionId, onUpdate
           const score = scores[key] || 1;
           const colorClass = SCORE_COLORS[score] || SCORE_COLORS[1];
           const lean = leanTag(equivalence?.[key]);
+          const isExpanded = expandedKey === key;
           return (
-            <div
+            <button
               key={key}
-              className={`relative flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-3 text-center ${colorClass}`}
+              type="button"
+              onClick={() => setExpandedKey(isExpanded ? null : key)}
+              className={`relative flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-3 text-center cursor-pointer transition-shadow ${colorClass} ${isExpanded ? 'ring-2 ring-current' : ''}`}
             >
               {lean && (
                 <span
@@ -85,10 +89,38 @@ export default function StationImpact({ scores, equivalence, sessionId, onUpdate
                   />
                 ))}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+
+      {expandedKey && (() => {
+        const meta = STATIONS.find(s => s.key === expandedKey);
+        const equiv = equivalence?.[expandedKey];
+        const lean = leanTag(equiv);
+        return (
+          <div className="mt-2 p-3 rounded-lg border border-border bg-secondary/40 text-xs space-y-1.5">
+            <p className="font-medium text-foreground flex items-center gap-1.5">
+              <span>{meta?.icon}</span>{meta?.label} — how this score was computed
+            </p>
+            {equiv ? (
+              <>
+                <p className="text-muted-foreground font-mono">{equiv.basis}</p>
+                <p className="text-muted-foreground">
+                  Volume: <span className="text-foreground font-mono">{Math.round((equiv.volumeRatio ?? 0) * 100)}%</span> of race demand
+                  {' · '}Load: <span className="text-foreground font-mono">{Math.round((equiv.loadRatio ?? 0) * 100)}%</span>
+                  {lean && <> · <span className={lean.className.split(' ')[0]}>{lean.title}</span></>}
+                </p>
+                <p className="text-muted-foreground">Score locked in by this arithmetic — not an AI guess.</p>
+              </>
+            ) : (
+              <p className="text-muted-foreground">
+                No structured volume/load data extracted for this station — the AI judged it qualitatively from your notes against the race-demand reference (see Station Model). Score: <span className="text-foreground font-mono">{scores[expandedKey] || 1}/5</span>.
+              </p>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

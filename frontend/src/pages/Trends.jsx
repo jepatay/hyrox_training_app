@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { sessionsApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
-import { STATIONS, formatDate } from '@/lib/utils';
+import { STATIONS, formatDate, getSessionTypeConfig } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const TRENDS_WINDOW_DAYS = 30;
 
@@ -15,6 +16,95 @@ function tierFromRatio(ratio) {
   if (ratio >= 0.4) return 3;
   if (ratio > 0) return 2;
   return 1;
+}
+
+// The literal calculation behind every tier — this is what "not transparent"
+// was about: a score with nothing behind it isn't trustworthy. Every row here
+// expands to the exact arithmetic (weight x volume vs. benchmark, or
+// intensity-adjusted distance) that produced it, not just a colored number.
+function SessionPerformanceTable({ sessions }) {
+  const [expandedId, setExpandedId] = useState(null);
+
+  if (!sessions.length) {
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center">
+        No sessions with a computed station breakdown in this window yet — hit Recalculate on a session to see its evaluation here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[680px]">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground uppercase tracking-wide">
+            <th className="font-medium py-2 pr-3">Date</th>
+            <th className="font-medium py-2 pr-3">Session</th>
+            <th className="font-medium py-2 pr-3">Stations touched — tier per station</th>
+            <th className="font-medium py-2 w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map(s => {
+            const isExpanded = expandedId === s.sessionId;
+            const typeConfig = getSessionTypeConfig(s.type);
+            return (
+              <Fragment key={s.sessionId}>
+                <tr
+                  className="border-t border-border/50 cursor-pointer hover:bg-secondary/30"
+                  onClick={() => setExpandedId(isExpanded ? null : s.sessionId)}
+                >
+                  <td className="py-2.5 pr-3 font-mono text-xs whitespace-nowrap align-top">{formatDate(s.date)}</td>
+                  <td className="py-2.5 pr-3 whitespace-nowrap align-top">
+                    <span className="inline-flex items-center gap-1.5">{typeConfig.icon} {typeConfig.label}</span>
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(s.stations).map(([key, p]) => {
+                        const meta = STATIONS.find(x => x.key === key);
+                        const tier = tierFromRatio(p.ratio);
+                        const color = tierColor(tier);
+                        return (
+                          <span
+                            key={key}
+                            title={`${meta?.label}: ${Math.round(p.ratio * 100)}% of race demand`}
+                            className="inline-flex items-center gap-1 text-xs font-mono font-semibold px-1.5 py-0.5 rounded"
+                            style={{ color, backgroundColor: `${color}22` }}
+                          >
+                            {meta?.icon} {tier}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </td>
+                  <td className="py-2.5 align-top text-muted-foreground">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="bg-secondary/20">
+                    <td colSpan={4} className="p-3">
+                      <div className="space-y-2">
+                        {Object.entries(s.stations).map(([key, p]) => {
+                          const meta = STATIONS.find(x => x.key === key);
+                          return (
+                            <div key={key} className="text-xs">
+                              <span className="font-medium text-foreground">{meta?.icon} {meta?.label} — tier {tierFromRatio(p.ratio)}/5</span>
+                              <p className="text-muted-foreground font-mono mt-0.5">{p.basis}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function TrendCard({ station, points }) {
@@ -164,6 +254,19 @@ export default function Trends() {
     return out;
   }, [data]);
 
+  // Same underlying data, pivoted from "per station, list of sessions" to
+  // "per session, list of stations" for the performance table.
+  const sessionsPivot = useMemo(() => {
+    if (!data) return [];
+    const map = {};
+    for (const [key, points] of Object.entries(data.trends || {})) {
+      for (const p of points) {
+        (map[p.sessionId] ||= { sessionId: p.sessionId, date: p.date, type: p.type, stations: {} }).stations[key] = p;
+      }
+    }
+    return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
+  }, [data]);
+
   // Default the quadrant to whichever station actually has the most data,
   // once it's loaded, instead of an arbitrary fixed choice.
   useEffect(() => {
@@ -185,10 +288,25 @@ export default function Trends() {
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {STATIONS.map(s => (
-              <TrendCard key={s.key} station={s} points={trendsByStation[s.key]} />
-            ))}
+          <div>
+            <h2 className="text-lg font-bold mb-1">Per-Training Performance</h2>
+            <p className="text-muted-foreground text-sm mb-3 max-w-2xl">
+              How each session was actually evaluated. Click a row to see the exact calculation per station — not just the tier number.
+            </p>
+            <Card>
+              <CardContent className="p-4">
+                <SessionPerformanceTable sessions={sessionsPivot} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-bold mb-3">Load Over Time</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {STATIONS.map(s => (
+                <TrendCard key={s.key} station={s} points={trendsByStation[s.key]} />
+              ))}
+            </div>
           </div>
 
           <div>
