@@ -3,13 +3,8 @@ import { sessionsApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { STATIONS, formatDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 
-const PERIODS = [
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 60 days', days: 60 },
-  { label: 'Last 90 days', days: 90 },
-];
+const TRENDS_WINDOW_DAYS = 30;
 
 function tierColor(tier) {
   return { 5: '#4ade80', 4: '#a3e635', 3: '#facc15', 2: '#fb923c', 1: '#f87171' }[tier] || '#6b7280';
@@ -77,18 +72,83 @@ function TrendCard({ station, points }) {
   );
 }
 
+function QuadrantView({ station, points }) {
+  const M = { l: 44, r: 14, t: 14, b: 34 }, W = 460, H = 380;
+  const plotW = W - M.l - M.r, plotH = H - M.t - M.b;
+  const maxDataPct = points.length ? Math.max(1, ...points.flatMap(p => [p.volumeRatio || 0, p.loadRatio || 0])) * 100 : 100;
+  const domainMax = Math.max(200, Math.ceil((maxDataPct * 1.15) / 50) * 50);
+  const x = pct => M.l + (pct / domainMax) * plotW;
+  const y = pct => M.t + plotH - (pct / domainMax) * plotH;
+  const tickStep = domainMax / 4;
+  const ticks = [0, 1, 2, 3, 4].map(i => Math.round(i * tickStep));
+
+  const usable = points.filter(p => p.volumeRatio != null && p.loadRatio != null);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2"><span className="text-lg">{station.icon}</span>{station.label} — Volume vs. Load</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {usable.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-10 text-center">No sessions with a computed breakdown for this station in the last {TRENDS_WINDOW_DAYS} days.</p>
+        ) : (
+          <>
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxWidth: 480 }}>
+              <rect x={x(100)} y={M.t} width={x(domainMax) - x(100)} height={y(100) - M.t} fill="#22d3ee" opacity="0.06" />
+              <rect x={M.l} y={M.t} width={x(100) - M.l} height={y(100) - M.t} fill="#fb923c" opacity="0.06" />
+              {ticks.map(v => (
+                <g key={v}>
+                  <line x1={x(v)} x2={x(v)} y1={M.t} y2={M.t + plotH} stroke="currentColor" className="text-border" strokeWidth="1" />
+                  <line x1={M.l} x2={M.l + plotW} y1={y(v)} y2={y(v)} stroke="currentColor" className="text-border" strokeWidth="1" />
+                  <text x={x(v)} y={M.t + plotH + 16} textAnchor="middle" fontSize="9" className="fill-muted-foreground">{v}</text>
+                  <text x={M.l - 8} y={y(v) + 3} textAnchor="end" fontSize="9" className="fill-muted-foreground">{v}</text>
+                </g>
+              ))}
+              <line x1={x(100)} x2={x(100)} y1={M.t} y2={M.t + plotH} stroke="currentColor" className="text-foreground" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.4" />
+              <line x1={M.l} x2={M.l + plotW} y1={y(100)} y2={y(100)} stroke="currentColor" className="text-foreground" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.4" />
+              <text x={M.l + plotW / 2} y={H - 4} textAnchor="middle" fontSize="10" fontWeight="600" className="fill-foreground">Volume (% of race demand)</text>
+              <text x={12} y={M.t + plotH / 2} textAnchor="middle" fontSize="10" fontWeight="600" className="fill-foreground" transform={`rotate(-90 12 ${M.t + plotH / 2})`}>Load / Effort (% of benchmark)</text>
+              {usable.map((p, i) => {
+                const isLatest = i === usable.length - 1;
+                return (
+                  <circle
+                    key={p.sessionId || i}
+                    cx={x(Math.min(p.volumeRatio * 100, domainMax))}
+                    cy={y(Math.min(p.loadRatio * 100, domainMax))}
+                    r={isLatest ? 6 : 3.5}
+                    fill={isLatest ? '#f97316' : 'currentColor'}
+                    className={isLatest ? '' : 'text-muted-foreground'}
+                    opacity={isLatest ? 1 : 0.55}
+                  >
+                    <title>{formatDate(p.date)} · volume {Math.round(p.volumeRatio * 100)}% · load {Math.round(p.loadRatio * 100)}%</title>
+                  </circle>
+                );
+              })}
+            </svg>
+            <div className="flex justify-center gap-4 mt-1 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-500" /> latest session</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-current opacity-55" /> earlier sessions</span>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Trends() {
-  const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [quadrantKey, setQuadrantKey] = useState('wall_balls');
   const { toast } = useToast();
 
-  useEffect(() => { load(days); }, [days]);
+  useEffect(() => { load(); }, []);
 
-  async function load(d) {
+  async function load() {
     setLoading(true);
     try {
-      const result = await sessionsApi.stationTrends(d);
+      const result = await sessionsApi.stationTrends(TRENDS_WINDOW_DAYS);
       setData(result);
     } catch {
       toast({ title: 'Error', description: 'Failed to load trends', variant: 'destructive' });
@@ -104,31 +164,59 @@ export default function Trends() {
     return out;
   }, [data]);
 
+  // Default the quadrant to whichever station actually has the most data,
+  // once it's loaded, instead of an arbitrary fixed choice.
+  useEffect(() => {
+    if (!data) return;
+    const richest = STATIONS.map(s => ({ key: s.key, n: (data.trends?.[s.key] || []).length })).sort((a, b) => b.n - a.n)[0];
+    if (richest?.n > 0) setQuadrantKey(richest.key);
+  }, [data]);
+
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
         <h1 className="text-2xl font-bold">Trends</h1>
         <p className="text-muted-foreground text-sm">
-          Race-equivalence per station across recent sessions — where volume is building, where it isn't, and which stations haven't been trained at all.
+          Race-equivalence per station over the last {TRENDS_WINDOW_DAYS} days — where volume is building, where it isn't, and which stations haven't been trained at all.
         </p>
-      </div>
-
-      <div className="flex gap-2">
-        {PERIODS.map(p => (
-          <Button key={p.days} size="sm" variant={days === p.days ? 'default' : 'outline'} onClick={() => setDays(p.days)}>
-            {p.label}
-          </Button>
-        ))}
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {STATIONS.map(s => (
-            <TrendCard key={s.key} station={s} points={trendsByStation[s.key]} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {STATIONS.map(s => (
+              <TrendCard key={s.key} station={s} points={trendsByStation[s.key]} />
+            ))}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold">Volume vs. Load</h2>
+            </div>
+            <p className="text-muted-foreground text-sm mb-3 max-w-2xl">
+              Same total work can come from very different training — high reps at a lighter load (volume-leaning) vs. fewer reps at a heavier load (load-leaning). The tier score above collapses this to one number; this keeps both axes visible, per station, across your recent sessions.
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {STATIONS.map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setQuadrantKey(s.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    quadrantKey === s.key ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary text-muted-foreground'
+                  }`}
+                >
+                  <span>{s.icon}</span>{s.label}
+                  {trendsByStation[s.key]?.length > 0 && (
+                    <span className="text-[10px] opacity-70">({trendsByStation[s.key].length})</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <QuadrantView station={STATIONS.find(s => s.key === quadrantKey)} points={trendsByStation[quadrantKey] || []} />
+          </div>
+        </>
       )}
 
       {data && (
