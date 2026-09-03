@@ -44,6 +44,19 @@ export const SESSION_TYPES = [
   { value: 'other', label: 'Other', color: '#64748b', icon: '🤸' },
 ];
 
+// The 9 HYROX stations — keys match backend STATION_KEYS in claude.js exactly.
+export const STATIONS = [
+  { key: 'running', label: 'Running', icon: '🏃' },
+  { key: 'skierg', label: 'SkiErg', icon: '🎿' },
+  { key: 'sled_push', label: 'Sled Push', icon: '🛷' },
+  { key: 'sled_pull', label: 'Sled Pull', icon: '🪢' },
+  { key: 'row_erg', label: 'Row Erg', icon: '🚣' },
+  { key: 'farmers_carry', label: 'Farmers Carry', icon: '🏋️' },
+  { key: 'sandbag_lunges', label: 'Sandbag Lunges', icon: '🎒' },
+  { key: 'burpee_broad_jump', label: 'Burpee Broad Jump', icon: '🤸' },
+  { key: 'wall_balls', label: 'Wall Balls', icon: '🏐' },
+];
+
 export const OBJECTIVE_TYPES = [
   { value: '5k', label: '5K Race' },
   { value: '10k', label: '10K Race' },

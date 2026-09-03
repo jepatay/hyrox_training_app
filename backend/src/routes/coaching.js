@@ -155,18 +155,24 @@ router.post('/station-scores', async (req, res) => {
     const session = docToObj(sessionDoc);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const knowledgeDoc = await collections.knowledge().doc('exercise_transferability').get();
+    const [knowledgeDoc, profileDoc] = await Promise.all([
+      collections.knowledge().doc('exercise_transferability').get(),
+      collections.profile().doc('main').get(),
+    ]);
     const knowledge = knowledgeDoc.exists ? knowledgeDoc.data().content : null;
+    const stationModel = profileDoc.exists ? profileDoc.data().stationModel : null;
 
-    const stationScores = await generateStationScores({ session, knowledge });
-    if (!stationScores) return res.status(502).json({ error: 'Failed to score stations' });
+    const result = await generateStationScores({ session, knowledge, stationModel });
+    if (!result) return res.status(502).json({ error: 'Failed to score stations' });
+    const { scores: stationScores, equivalence: stationEquivalence } = result;
 
     await collections.sessions().doc(sessionId).update({
       stationScores,
+      stationEquivalence,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ stationScores });
+    res.json({ stationScores, stationEquivalence });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate station scores' });

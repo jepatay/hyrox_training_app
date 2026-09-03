@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, BookOpen, Menu, X, Mic
+  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, BookOpen, Menu, X, Mic, TrendingUp, SlidersHorizontal
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -10,11 +10,13 @@ const navItems = [
   { path: '/objectives', label: 'Objectives', icon: Target },
   { path: '/drafts', label: 'Drafts', icon: Mic },
   { path: '/training', label: 'Training Log', icon: Dumbbell },
+  { path: '/trends', label: 'Trends', icon: TrendingUp },
   { path: '/records', label: 'Records', icon: Trophy },
   { path: '/report', label: 'Monthly Report', icon: BarChart3 },
   { path: '/suggest', label: 'Suggest Training', icon: Zap },
   { path: '/venues', label: 'My Venues', icon: MapPin },
   { path: '/knowledge', label: 'Knowledge Library', icon: BookOpen },
+  { path: '/station-model', label: 'Station Model', icon: SlidersHorizontal },
 ];
 
 export default function Layout({ children }) {

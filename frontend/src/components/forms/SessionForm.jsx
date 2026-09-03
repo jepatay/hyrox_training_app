@@ -116,7 +116,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
             coachingApi.generateStationScores(saved.id),
           ]);
           if (feedbackResult.status === 'fulfilled') saved = { ...saved, coachingThread: feedbackResult.value.coachingThread };
-          if (scoresResult.status === 'fulfilled') saved = { ...saved, stationScores: scoresResult.value.stationScores };
+          if (scoresResult.status === 'fulfilled') saved = { ...saved, stationScores: scoresResult.value.stationScores, stationEquivalence: scoresResult.value.stationEquivalence };
           setGeneratingFeedback(false);
         }
       }

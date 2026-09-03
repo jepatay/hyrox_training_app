@@ -678,8 +678,51 @@ const STATION_BENCHMARKS = [
   { key: 'wall_balls', label: 'Wall Balls', demand: '100 reps with a 6kg ball at a 10ft target', kind: 'work', raceWeightKg: 6, raceVolume: 100, volumeUnit: 'reps' },
 ];
 
-function renderStationBenchmarks() {
-  return STATION_BENCHMARKS.map(b => `- ${b.label}: race demand ${b.demand}.`).join('\n');
+// Applies a user's saved customization (profile.stationModel.benchmarks[key])
+// on top of the hardcoded defaults. Only raceVolume (which doubles as
+// raceDistanceM for cardio stations) and raceWeightKg are overridable — kind,
+// label and unit stay fixed, they're properties of the station, not a demand
+// figure someone would want to retune.
+function benchmarkFor(b, overrides) {
+  const o = overrides?.[b.key];
+  if (!o) return b;
+  return {
+    ...b,
+    raceVolume: o.raceVolume ?? b.raceVolume,
+    raceDistanceM: o.raceVolume ?? b.raceDistanceM,
+    raceWeightKg: o.raceWeightKg ?? b.raceWeightKg,
+  };
+}
+
+// Default station model in the shape the frontend edits and profile.stationModel
+// is stored in — a flat raceVolume per station (cardio's raceDistanceM folded
+// into the same field, since to an editor they're the same "how much" number).
+export function getDefaultStationModel() {
+  return {
+    thresholds: { t5: 150, t4: 75, t3: 40 },
+    benchmarks: STATION_BENCHMARKS.reduce((acc, b) => {
+      acc[b.key] = {
+        label: b.label,
+        kind: b.kind,
+        volumeUnit: b.kind === 'cardio' ? 'm' : b.volumeUnit,
+        raceVolume: b.kind === 'cardio' ? b.raceDistanceM : b.raceVolume,
+        raceWeightKg: b.raceWeightKg ?? null,
+      };
+      return acc;
+    }, {}),
+  };
+}
+
+function renderStationBenchmarks(overrides) {
+  return STATION_BENCHMARKS.map(raw => {
+    const b = benchmarkFor(raw, overrides);
+    const demand = b.kind === 'cardio'
+      ? `${b.raceDistanceM}m at race pace`
+      : b.raceWeightKg
+      ? `${b.raceVolume}${b.volumeUnit} at ~${b.raceWeightKg}kg`
+      : `${b.raceVolume}${b.volumeUnit}`;
+    return `- ${b.label}: race demand ${demand}.`;
+  }).join('\n');
 }
 
 // Effort relative to race pace, applied to distance for cardio stations —
@@ -710,9 +753,9 @@ const EXTRACTION_NAME_TO_STATION = {
 // compares to HYROX Open Men race demand — as a single ratio the model can
 // apply directly, instead of it eyeballing "high volume" from prose (which
 // is what let very different sessions land on the identical score before).
-function computeStationEquivalence(session) {
+function computeStationEquivalence(session, benchmarkOverrides) {
   const byStation = {};
-  const bump = (key) => (byStation[key] ||= { workKg: 0, distanceM: 0, reps: 0 });
+  const bump = (key) => (byStation[key] ||= { workKg: 0, volume: 0, distanceM: 0, reps: 0 });
 
   for (const e of session.extractedExercises?.exercises || []) {
     if (!e?.name) continue;
@@ -738,6 +781,7 @@ function computeStationEquivalence(session) {
     const station = bump(stationKey);
     if (e.weightKg) {
       station.workKg += e.weightKg * volume * creditMultiplier;
+      station.volume += volume * creditMultiplier;
     } else if (e.distanceM) {
       station.distanceM += volume * creditMultiplier;
     } else {
@@ -753,15 +797,24 @@ function computeStationEquivalence(session) {
   const intensity = rpeIntensityMultiplier(session.rpe);
 
   const results = {};
-  for (const b of STATION_BENCHMARKS) {
-    const data = byStation[b.key];
+  for (const raw of STATION_BENCHMARKS) {
+    const data = byStation[raw.key];
     if (!data) continue;
+    const b = benchmarkFor(raw, benchmarkOverrides);
 
+    // Every result carries volumeRatio × loadRatio === ratio exactly — the
+    // two factors a single combined score collapses together. "Load" means
+    // different things per kind: actual implement weight for 'work' stations,
+    // effort-vs-race-pace for 'cardio', a worn vest for 'bodyweight'.
     if (b.kind === 'work') {
       if (data.workKg > 0) {
         const benchmark = b.raceWeightKg * b.raceVolume;
+        const volumeRatio = data.volume / b.raceVolume;
+        const avgWeight = data.workKg / data.volume;
+        const loadRatio = avgWeight / b.raceWeightKg;
         results[b.key] = {
           ratio: data.workKg / benchmark,
+          volumeRatio, loadRatio,
           basis: `${Math.round(data.workKg).toLocaleString()} kg·${b.volumeUnit} logged (weight × volume) vs ${benchmark.toLocaleString()} kg·${b.volumeUnit} race demand (${b.raceWeightKg}kg × ${b.raceVolume}${b.volumeUnit})`,
         };
       } else {
@@ -769,8 +822,9 @@ function computeStationEquivalence(session) {
         // conservatively assuming it was near race-standard load.
         const rawVolume = data.distanceM || data.reps;
         if (rawVolume) {
+          const ratio = rawVolume / b.raceVolume;
           results[b.key] = {
-            ratio: rawVolume / b.raceVolume,
+            ratio, volumeRatio: ratio, loadRatio: 1.0,
             basis: `${rawVolume}${b.volumeUnit} logged (no weight recorded, assumed near race-standard load) vs ${b.raceVolume}${b.volumeUnit} race demand`,
           };
         }
@@ -779,14 +833,16 @@ function computeStationEquivalence(session) {
       const effectiveDistance = data.distanceM * intensity;
       results[b.key] = {
         ratio: effectiveDistance / b.raceDistanceM,
+        volumeRatio: data.distanceM / b.raceDistanceM, loadRatio: intensity,
         basis: `${Math.round(data.distanceM)}m × ${intensity}x intensity (RPE ${session.rpe ?? '?'}) = ${Math.round(effectiveDistance)}m effective vs ${b.raceDistanceM}m race demand`,
       };
     } else if (b.kind === 'bodyweight') {
-      const rawVolume = (data.distanceM || (data.reps ? data.reps * (b.raceVolume / b.repsEquivalent) : 0)) * vestBonus;
-      if (rawVolume) {
+      const rawVolumeNoVest = data.distanceM || (data.reps ? data.reps * (b.raceVolume / b.repsEquivalent) : 0);
+      if (rawVolumeNoVest) {
         results[b.key] = {
-          ratio: rawVolume / b.raceVolume,
-          basis: `${Math.round(rawVolume)}${b.volumeUnit}-equivalent logged${session.weightVest ? ' (+15% for weight vest)' : ''} vs ${b.raceVolume}${b.volumeUnit} race demand`,
+          ratio: (rawVolumeNoVest * vestBonus) / b.raceVolume,
+          volumeRatio: rawVolumeNoVest / b.raceVolume, loadRatio: vestBonus,
+          basis: `${Math.round(rawVolumeNoVest * vestBonus)}${b.volumeUnit}-equivalent logged${session.weightVest ? ' (+15% for weight vest)' : ''} vs ${b.raceVolume}${b.volumeUnit} race demand`,
         };
       }
     }
@@ -800,18 +856,27 @@ function computeStationEquivalence(session) {
 // in other qualitative signals (like rest between rounds) even when the
 // precomputed number said otherwise. For any station this function can
 // compute, that's a bug we can just remove by not asking the model at all.
-function tierFromRatio(ratio) {
-  if (ratio >= 1.5) return 5;
-  if (ratio >= 0.75) return 4;
-  if (ratio >= 0.4) return 3;
+function tierFromRatio(ratio, thresholds) {
+  const t5 = thresholds?.t5 ?? 1.5;
+  const t4 = thresholds?.t4 ?? 0.75;
+  const t3 = thresholds?.t3 ?? 0.4;
+  if (ratio >= t5) return 5;
+  if (ratio >= t4) return 4;
+  if (ratio >= t3) return 3;
   if (ratio > 0) return 2;
   return 1;
 }
 
-export async function generateStationScores({ session, knowledge }) {
+export async function generateStationScores({ session, knowledge, stationModel }) {
   const isHyroxSession = session.type === 'hyrox_training' || session.type === 'hyrox_race' || session.type === 'hyrox_competition';
   const isRunSession = session.type === 'running';
   const isStrengthSession = session.type === 'gym_strength';
+  // Percentages as the UI naturally edits them (150/75/40) — converted to the
+  // fraction form ratios are expressed in internally (1.5/0.75/0.4).
+  const thresholds = stationModel?.thresholds
+    ? { t5: stationModel.thresholds.t5 / 100, t4: stationModel.thresholds.t4 / 100, t3: stationModel.thresholds.t3 / 100 }
+    : undefined;
+  const benchmarkOverrides = stationModel?.benchmarks;
 
   const extractedList = session.extractedExercises?.exercises?.length
     ? session.extractedExercises.exercises
@@ -824,7 +889,7 @@ export async function generateStationScores({ session, knowledge }) {
         .join('\n')
     : null;
 
-  const equivalence = computeStationEquivalence(session);
+  const equivalence = computeStationEquivalence(session, benchmarkOverrides);
   const equivalenceLines = Object.entries(equivalence).map(([key, { ratio, basis }]) => {
     const label = STATION_BENCHMARKS.find(b => b.key === key)?.label || key;
     return `- ${label}: ${basis} → ${Math.round(ratio * 100)}% of race demand`;
@@ -878,7 +943,7 @@ ${extractedBlock}${notesBlock}
 ${knowledgeBlock}
 
 HYROX OPEN MEN RACE-STANDARD REFERENCE — the fixed anchor for every score.
-${renderStationBenchmarks()}
+${renderStationBenchmarks(benchmarkOverrides)}
 
 Scoring scale (this only affects stations WITHOUT a computed percentage above — the rest are already locked in):
 - For stations with no computed percentage (no matching structured data), judge qualitatively against the reference above and the notes/knowledge library:
@@ -915,11 +980,14 @@ Return JSON only:
     // Stations with a computed race-equivalence ratio are scored deterministically
     // in code, not by the model — see tierFromRatio for why.
     if (equivalence[key]) {
-      scores[key] = tierFromRatio(equivalence[key].ratio);
+      scores[key] = tierFromRatio(equivalence[key].ratio, thresholds);
       continue;
     }
     const v = Number(result[key]);
     scores[key] = Number.isFinite(v) ? Math.min(5, Math.max(1, Math.round(v))) : 1;
   }
-  return scores;
+  // The fuller per-station breakdown (volumeRatio/loadRatio/basis) is kept
+  // alongside the 1-5 scores so callers can persist it for trend charting —
+  // the score alone can't be decomposed back into volume vs. load later.
+  return { scores, equivalence };
 }
