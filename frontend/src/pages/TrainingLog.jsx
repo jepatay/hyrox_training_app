@@ -99,7 +99,10 @@ export default function TrainingLog() {
       if (s.id !== session.id) return s;
       const updated = { ...s };
       if (feedbackResult.status === 'fulfilled') updated.coachingThread = feedbackResult.value.coachingThread;
-      if (scoresResult.status === 'fulfilled') updated.stationScores = scoresResult.value.stationScores;
+      if (scoresResult.status === 'fulfilled') {
+        updated.stationScores = scoresResult.value.stationScores;
+        updated.stationEquivalence = scoresResult.value.stationEquivalence;
+      }
       return updated;
     }));
     setExpanded(session.id);
@@ -371,8 +374,9 @@ export default function TrainingLog() {
                       {session.stationScores && (
                         <StationImpact
                           scores={session.stationScores}
+                          equivalence={session.stationEquivalence}
                           sessionId={session.id}
-                          onUpdate={stationScores => setSessions(prev => prev.map(s => s.id === session.id ? { ...s, stationScores } : s))}
+                          onUpdate={(stationScores, stationEquivalence) => setSessions(prev => prev.map(s => s.id === session.id ? { ...s, stationScores, stationEquivalence } : s))}
                         />
                       )}
                       {session.coachingThread && (

@@ -53,6 +53,7 @@ export const sessionsApi = {
   create: (data) => api.post('/api/sessions', data),
   update: (id, data) => api.put(`/api/sessions/${id}`, data),
   delete: (id) => api.delete(`/api/sessions/${id}`),
+  stationTrends: (days) => api.get(`/api/sessions/station-trends${days ? `?days=${days}` : ''}`),
 };
 
 export const recordsApi = {
@@ -81,6 +82,7 @@ export const suggestionsApi = {
 export const profileApi = {
   get: () => api.get('/api/profile'),
   update: (data) => api.put('/api/profile', data),
+  getStationModel: () => api.get('/api/profile/station-model'),
 };
 
 export const reportsApi = {

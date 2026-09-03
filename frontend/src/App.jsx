@@ -13,6 +13,8 @@ import Venues from '@/pages/Venues';
 import StravaCallback from '@/pages/StravaCallback';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
 import Drafts from '@/pages/Drafts';
+import Trends from '@/pages/Trends';
+import StationModel from '@/pages/StationModel';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -45,6 +47,8 @@ function AppContent() {
         <Route path="/venues" element={<Venues />} />
         <Route path="/strava/callback" element={<StravaCallback />} />
         <Route path="/knowledge" element={<KnowledgeLibrary />} />
+        <Route path="/trends" element={<Trends />} />
+        <Route path="/station-model" element={<StationModel />} />
       </Routes>
     </Layout>
   );

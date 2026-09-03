@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { coachingApi } from '@/lib/api';
+import { STATIONS } from '@/lib/utils';
 import { RefreshCw } from 'lucide-react';
 
-const STATIONS = [
-  { key: 'running', label: 'Running', icon: '🏃' },
-  { key: 'skierg', label: 'SkiErg', icon: '🎿' },
-  { key: 'sled_push', label: 'Sled Push', icon: '🛷' },
-  { key: 'sled_pull', label: 'Sled Pull', icon: '🪢' },
-  { key: 'row_erg', label: 'Row Erg', icon: '🚣' },
-  { key: 'farmers_carry', label: 'Farmers Carry', icon: '🏋️' },
-  { key: 'sandbag_lunges', label: 'Sandbag Lunges', icon: '🎒' },
-  { key: 'burpee_broad_jump', label: 'Burpee Broad Jump', icon: '🤸' },
-  { key: 'wall_balls', label: 'Wall Balls', icon: '🏐' },
-];
+// Volume-leaning vs load-leaning vs race-realistic, from the same volumeRatio/
+// loadRatio decomposition used in the Station Model settings and Trends pages.
+function leanTag(equiv) {
+  if (!equiv) return null;
+  const { volumeRatio, loadRatio } = equiv;
+  if (volumeRatio == null || loadRatio == null) return null;
+  if (volumeRatio > loadRatio * 1.15) return { letter: 'V', title: 'Volume-leaning (endurance bias)', className: 'text-cyan-400 border-cyan-400/40' };
+  if (loadRatio > volumeRatio * 1.15) return { letter: 'L', title: 'Load-leaning (strength bias)', className: 'text-orange-400 border-orange-400/40' };
+  return { letter: 'R', title: 'Race-realistic balance', className: 'text-muted-foreground border-current/40' };
+}
 
 const SCORE_COLORS = {
   1: 'bg-red-500/15 border-red-500/40 text-red-400',
@@ -22,15 +22,15 @@ const SCORE_COLORS = {
   5: 'bg-green-500/15 border-green-500/40 text-green-400',
 };
 
-export default function StationImpact({ scores, sessionId, onUpdate }) {
+export default function StationImpact({ scores, equivalence, sessionId, onUpdate }) {
   const [refreshing, setRefreshing] = useState(false);
 
   async function handleRefresh() {
     if (!sessionId || refreshing) return;
     setRefreshing(true);
     try {
-      const { stationScores } = await coachingApi.generateStationScores(sessionId);
-      onUpdate?.(stationScores);
+      const { stationScores, stationEquivalence } = await coachingApi.generateStationScores(sessionId);
+      onUpdate?.(stationScores, stationEquivalence);
     } catch {
       // silently ignore
     } finally {
@@ -60,11 +60,20 @@ export default function StationImpact({ scores, sessionId, onUpdate }) {
         {STATIONS.map(({ key, label, icon }) => {
           const score = scores[key] || 1;
           const colorClass = SCORE_COLORS[score] || SCORE_COLORS[1];
+          const lean = leanTag(equivalence?.[key]);
           return (
             <div
               key={key}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-3 text-center ${colorClass}`}
+              className={`relative flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-3 text-center ${colorClass}`}
             >
+              {lean && (
+                <span
+                  title={lean.title}
+                  className={`absolute top-1 right-1 h-3.5 w-3.5 rounded-full border bg-background text-[8px] font-bold leading-[13px] ${lean.className}`}
+                >
+                  {lean.letter}
+                </span>
+              )}
               <span className="text-lg">{icon}</span>
               <span className="text-[10px] leading-tight font-medium text-foreground">{label}</span>
               <span className="text-sm font-bold">{score}</span>

@@ -24,11 +24,18 @@ async function runBackgroundJobs(session, { notesChanged = false, isEdit = false
   // Refresh station impact scores after an edit changes the underlying training data.
   // (On creation, the frontend already triggers this explicitly — skip to avoid a duplicate call.)
   if (isEdit && notesChanged && session.status === 'completed') {
-    const knowledgeDoc = await collections.knowledge().doc('exercise_transferability').get();
+    const [knowledgeDoc, profileDoc] = await Promise.all([
+      collections.knowledge().doc('exercise_transferability').get(),
+      collections.profile().doc('main').get(),
+    ]);
     const knowledge = knowledgeDoc.exists ? knowledgeDoc.data().content : null;
-    const stationScores = await generateStationScores({ session, knowledge });
-    if (stationScores && session.id) {
-      await collections.sessions().doc(session.id).update({ stationScores });
+    const stationModel = profileDoc.exists ? profileDoc.data().stationModel : null;
+    const result = await generateStationScores({ session, knowledge, stationModel });
+    if (result && session.id) {
+      await collections.sessions().doc(session.id).update({
+        stationScores: result.scores,
+        stationEquivalence: result.equivalence,
+      });
     }
   }
 }
@@ -45,6 +52,43 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+// GET station-equivalence trends across recent sessions, grouped by station.
+// Registered before GET /:id so "station-trends" isn't swallowed as an id.
+router.get('/station-trends', async (req, res) => {
+  try {
+    const days = req.query.days ? parseInt(req.query.days) : 30;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const snap = await collections.sessions()
+      .where('date', '>=', cutoffStr)
+      .orderBy('date', 'asc')
+      .get();
+
+    const sessions = snap.docs.map(docToObj).filter(s => s && s.stationEquivalence);
+
+    const trends = {};
+    for (const s of sessions) {
+      for (const [key, data] of Object.entries(s.stationEquivalence)) {
+        (trends[key] ||= []).push({
+          date: s.date,
+          sessionId: s.id,
+          type: s.type,
+          ratio: data.ratio,
+          volumeRatio: data.volumeRatio,
+          loadRatio: data.loadRatio,
+        });
+      }
+    }
+
+    res.json({ days, from: cutoffStr, to: new Date().toISOString().slice(0, 10), trends });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch station trends' });
   }
 });
 
