@@ -106,6 +106,30 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST run exercise extraction for a session's current notes and return it,
+// without touching station scores. Used by the frontend's review step so the
+// athlete can see and correct what was parsed from freeform notes before any
+// score gets computed from it — extraction misreads (a missed round count, a
+// misclassified movement) have repeatedly turned into silently wrong scores.
+router.post('/:id/extract', async (req, res) => {
+  try {
+    const doc = await collections.sessions().doc(req.params.id).get();
+    const session = docToObj(doc);
+    if (!session) return res.status(404).json({ error: 'Not found' });
+    if (!session.notes?.trim()) return res.json({ extractedExercises: null });
+
+    const extracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    await collections.sessions().doc(req.params.id).update({
+      extractedExercises: extracted,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ extractedExercises: extracted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to extract exercises' });
+  }
+});
+
 // POST create session
 router.post('/', async (req, res) => {
   try {

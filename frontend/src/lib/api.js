@@ -54,6 +54,7 @@ export const sessionsApi = {
   update: (id, data) => api.put(`/api/sessions/${id}`, data),
   delete: (id) => api.delete(`/api/sessions/${id}`),
   stationTrends: (days) => api.get(`/api/sessions/station-trends${days ? `?days=${days}` : ''}`),
+  extract: (id) => api.post(`/api/sessions/${id}/extract`, {}),
 };
 
 export const recordsApi = {
