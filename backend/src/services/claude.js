@@ -383,7 +383,7 @@ Return:
   "estimatedPace": "<e.g. 4:30/km or null>",
   "exercises": [
     {
-      "name": "<sledPush|sledPull|farmersCarry|wallBalls|skiErg|rowErg|burpeeBroadJump|walkingLunges|squat|deadlift|benchPress|pullUp|run|other>",
+      "name": "<sledPush|sledPull|farmersCarry|wallBalls|skiErg|rowErg|burpeeBroadJump|walkingLunges|squat|thruster|deadlift|benchPress|pullUp|run|other>",
       "sets": <number or null>,
       "reps": <number or null>,
       "weightKg": <number or null>,
@@ -747,6 +747,7 @@ const EXTRACTION_NAME_TO_STATION = {
   burpeeBroadJump: 'burpee_broad_jump',
   walkingLunges: 'sandbag_lunges',
   run: 'running',
+  thruster: 'wall_balls', // squat-to-press — full credit, same as a literal wall ball rep
 };
 
 // Computes, per station, how the session's logged volume/load/intensity
