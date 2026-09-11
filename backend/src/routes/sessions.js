@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
-import { extractExercisesFromNotes, generateStationScores } from '../services/claude.js';
+import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary } from '../services/claude.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -111,14 +111,35 @@ router.get('/:id', async (req, res) => {
 // athlete can see and correct what was parsed from freeform notes before any
 // score gets computed from it — extraction misreads (a missed round count, a
 // misclassified movement) have repeatedly turned into silently wrong scores.
+// Also returns a plain-text, one-line-per-exercise rendering of the computed
+// totals (e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps total") — that's what
+// the athlete actually reviews/edits, not a table of separate fields.
 router.post('/:id/extract', async (req, res) => {
   try {
     const doc = await collections.sessions().doc(req.params.id).get();
     const session = docToObj(doc);
     if (!session) return res.status(404).json({ error: 'Not found' });
-    if (!session.notes?.trim()) return res.json({ extractedExercises: null });
+    if (!session.notes?.trim()) return res.json({ extractedExercises: null, summaryText: '' });
 
     const extracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    await collections.sessions().doc(req.params.id).update({
+      extractedExercises: extracted,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to extract exercises' });
+  }
+});
+
+// POST re-parse the athlete's (possibly hand-edited) review text back into
+// structured exercises and persist it. Deterministic regex parsing, not
+// another AI guess — the confirmed text is exactly what scoring will see.
+router.post('/:id/confirm-extraction', async (req, res) => {
+  try {
+    const { text } = req.body;
+    const extracted = parseExtractionSummary(text);
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -126,7 +147,7 @@ router.post('/:id/extract', async (req, res) => {
     res.json({ extractedExercises: extracted });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to extract exercises' });
+    res.status(500).json({ error: 'Failed to confirm extraction' });
   }
 });
 

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SESSION_TYPES } from '@/lib/utils';
-import { Sparkles, Trash2, Plus } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 const RPE_LABELS = {
   1: 'Recovery — effortless, Zone 1',
@@ -28,27 +28,6 @@ const VOLUME_DESCRIPTIONS = {
   Medium: '30–60 min of work — solid amount, could have done a bit more',
   High: '60+ min or high rep count — legs depleted from quantity, not just peak effort',
 };
-
-// Kept in sync with the extraction enum in backend/src/services/claude.js
-const EXTRACTED_EXERCISE_NAMES = [
-  { value: 'sledPush', label: 'Sled Push' },
-  { value: 'sledPull', label: 'Sled Pull' },
-  { value: 'farmersCarry', label: 'Farmers Carry' },
-  { value: 'wallBalls', label: 'Wall Balls' },
-  { value: 'skiErg', label: 'Ski Erg' },
-  { value: 'rowErg', label: 'Row Erg' },
-  { value: 'burpeeBroadJump', label: 'Burpee Broad Jump' },
-  { value: 'walkingLunges', label: 'Walking Lunges' },
-  { value: 'squat', label: 'Squat' },
-  { value: 'thruster', label: 'Thruster' },
-  { value: 'deadlift', label: 'Deadlift' },
-  { value: 'benchPress', label: 'Bench Press' },
-  { value: 'pullUp', label: 'Pull Up' },
-  { value: 'run', label: 'Run' },
-  { value: 'other', label: 'Other' },
-];
-
-const emptyRow = () => ({ name: 'other', sets: '', reps: '', weightKg: '', distanceM: '', notes: '' });
 
 export default function SessionForm({ session, onClose, onSaved }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -73,7 +52,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [venues, setVenues] = useState([]);
   const [savedSession, setSavedSession] = useState(null);
-  const [reviewRows, setReviewRows] = useState([]);
+  const [reviewText, setReviewText] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -142,18 +121,11 @@ export default function SessionForm({ session, onClose, onSaved }) {
       setStage('extracting');
       setSaving(false);
       try {
-        const { extractedExercises } = await sessionsApi.extract(saved.id);
-        setReviewRows((extractedExercises?.exercises || []).map(e => ({
-          name: e.name || 'other',
-          sets: e.sets ?? '',
-          reps: e.reps ?? '',
-          weightKg: e.weightKg ?? '',
-          distanceM: e.distanceM ?? '',
-          notes: e.notes || '',
-        })));
+        const { summaryText } = await sessionsApi.extract(saved.id);
+        setReviewText(summaryText || '');
       } catch {
-        setReviewRows([]);
-        toast({ title: 'Extraction failed', description: 'You can still add exercises manually below.', variant: 'destructive' });
+        setReviewText('');
+        toast({ title: 'Extraction failed', description: 'You can still type exercises manually below.', variant: 'destructive' });
       }
       setStage('review');
     } catch (err) {
@@ -162,22 +134,13 @@ export default function SessionForm({ session, onClose, onSaved }) {
     }
   }
 
-  // Persists the (possibly hand-corrected) exercise list, then scores off
-  // exactly what's on screen — not whatever the AI originally guessed.
+  // Persists the (possibly hand-corrected) review text, re-parses it back
+  // into structured exercises, then scores off exactly that — not whatever
+  // the AI originally guessed from the freeform notes.
   async function handleConfirmReview() {
     setStage('finalizing');
     try {
-      const exercises = reviewRows
-        .filter(r => r.name)
-        .map(r => ({
-          name: r.name,
-          sets: r.sets !== '' ? Number(r.sets) : null,
-          reps: r.reps !== '' ? Number(r.reps) : null,
-          weightKg: r.weightKg !== '' ? Number(r.weightKg) : null,
-          distanceM: r.distanceM !== '' ? Number(r.distanceM) : null,
-          notes: r.notes || null,
-        }));
-      await sessionsApi.update(savedSession.id, { extractedExercises: { exercises } });
+      await sessionsApi.confirmExtraction(savedSession.id, reviewText);
       await finalize(savedSession, !session);
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -207,16 +170,6 @@ export default function SessionForm({ session, onClose, onSaved }) {
     }
   }
 
-  function updateRow(i, field, value) {
-    setReviewRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
-  }
-  function removeRow(i) {
-    setReviewRows(prev => prev.filter((_, idx) => idx !== i));
-  }
-  function addRow() {
-    setReviewRows(prev => [...prev, emptyRow()]);
-  }
-
   if (stage === 'extracting' || stage === 'finalizing') {
     return (
       <Dialog open onOpenChange={onClose}>
@@ -242,40 +195,20 @@ export default function SessionForm({ session, onClose, onSaved }) {
           <DialogHeader>
             <DialogTitle>Review What Was Extracted</DialogTitle>
             <DialogDescription>
-              This is what the AI read from your notes — sets × reps, weight, distance. Fix anything it got wrong (a missed round count, a mislabeled movement) before station scores are computed from it.
+              This is your log rewritten as one line per exercise, with the total already worked out — e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps total". Fix any line that's wrong (a missed round count, a mislabeled movement) before station scores are computed from it. Keep the exercise name at the start of each line so it's recognized.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {reviewRows.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nothing structured was found in your notes. Add exercises manually if any of them should count toward a station.</p>
+            {reviewText.trim() === '' && (
+              <p className="text-sm text-muted-foreground">Nothing structured was found in your notes. Type exercise lines below if any should count toward a station, e.g. "Wall Balls: 100 reps @ 6kg".</p>
             )}
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-              {reviewRows.map((row, i) => (
-                <div key={i} className="grid grid-cols-[1.4fr_0.7fr_0.7fr_0.8fr_0.8fr_auto] gap-1.5 items-center">
-                  <Select value={row.name} onValueChange={v => updateRow(i, 'name', v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {EXTRACTED_EXERCISE_NAMES.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input className="h-8 text-xs" type="number" placeholder="sets" value={row.sets} onChange={e => updateRow(i, 'sets', e.target.value)} />
-                  <Input className="h-8 text-xs" type="number" placeholder="reps" value={row.reps} onChange={e => updateRow(i, 'reps', e.target.value)} />
-                  <Input className="h-8 text-xs" type="number" placeholder="kg" step="0.5" value={row.weightKg} onChange={e => updateRow(i, 'weightKg', e.target.value)} />
-                  <Input className="h-8 text-xs" type="number" placeholder="m" value={row.distanceM} onChange={e => updateRow(i, 'distanceM', e.target.value)} />
-                  <button type="button" onClick={() => removeRow(i)} className="text-muted-foreground hover:text-destructive p-1">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            {reviewRows.length > 0 && (
-              <div className="grid grid-cols-[1.4fr_0.7fr_0.7fr_0.8fr_0.8fr_auto] gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wide px-0.5">
-                <span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight</span><span>Distance</span><span></span>
-              </div>
-            )}
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addRow}>
-              <Plus className="h-3.5 w-3.5" /> Add exercise
-            </Button>
+            <Textarea
+              value={reviewText}
+              onChange={e => setReviewText(e.target.value)}
+              rows={10}
+              className="font-mono text-sm"
+              placeholder={'Thruster: 13 × 15 reps @ 11kg = 195 reps total\nWall Balls: 100 reps @ 6kg'}
+            />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setStage('form')}>Back</Button>
