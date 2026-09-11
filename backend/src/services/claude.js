@@ -400,6 +400,97 @@ Athletes write repeated rounds in many different ways: an explicit "N rounds of 
   return chatJson(prompt, 1000);
 }
 
+// Kept in sync with the extraction enum above — used both to render the
+// human-readable review lines and to parse them back after editing.
+const EXERCISE_LABELS = {
+  sledPush: 'Sled Push',
+  sledPull: 'Sled Pull',
+  farmersCarry: 'Farmers Carry',
+  wallBalls: 'Wall Balls',
+  skiErg: 'Ski Erg',
+  rowErg: 'Row Erg',
+  burpeeBroadJump: 'Burpee Broad Jump',
+  walkingLunges: 'Walking Lunges',
+  squat: 'Squat',
+  thruster: 'Thruster',
+  deadlift: 'Deadlift',
+  benchPress: 'Bench Press',
+  pullUp: 'Pull Up',
+  run: 'Run',
+  other: 'Other',
+};
+const LABEL_TO_EXERCISE_NAME = Object.fromEntries(
+  Object.entries(EXERCISE_LABELS).map(([name, label]) => [label.toLowerCase(), name])
+);
+
+// Turns extracted exercises into one plain-text line per exercise, spelling
+// out the computed total (e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps
+// total") instead of a table of separate fields — this is what the athlete
+// reviews and edits directly before scoring, so what they see IS what gets
+// scored, not a paraphrase of it.
+export function renderExtractionSummary(extracted) {
+  const exercises = extracted?.exercises || [];
+  if (!exercises.length) return '';
+  return exercises.map(e => {
+    const label = EXERCISE_LABELS[e.name] || e.name || 'Exercise';
+    const weight = e.weightKg ? ` @ ${e.weightKg}kg` : '';
+    const sets = e.sets && e.sets > 1 ? e.sets : null;
+    if (e.reps) {
+      const total = (sets || 1) * e.reps;
+      const setsPrefix = sets ? `${sets} × ` : '';
+      const totalSuffix = sets ? ` = ${total} reps total` : '';
+      return `${label}: ${setsPrefix}${e.reps} reps${weight}${totalSuffix}`;
+    }
+    if (e.distanceM) {
+      const total = (sets || 1) * e.distanceM;
+      const setsPrefix = sets ? `${sets} × ` : '';
+      const totalSuffix = sets ? ` = ${total}m total` : '';
+      return `${label}: ${setsPrefix}${e.distanceM}m${weight}${totalSuffix}`;
+    }
+    return `${label}: ${e.notes || 'logged'} (no reps/distance captured — won't count toward station scores)`;
+  }).join('\n');
+}
+
+// Parses the athlete's (possibly hand-edited) summary lines straight back
+// into structured exercises with plain regex — deterministic, not another AI
+// guess, so the reviewed text is exactly what scoring sees.
+export function parseExtractionSummary(text) {
+  const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const exercises = [];
+  for (const line of lines) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) continue;
+    const labelPart = line.slice(0, colonIdx).trim().toLowerCase();
+    const rest = line.slice(colonIdx + 1).trim();
+    const name = LABEL_TO_EXERCISE_NAME[labelPart] || 'other';
+
+    const weightMatch = rest.match(/@\s*([\d.]+)\s*kg/i);
+    const weightKg = weightMatch ? parseFloat(weightMatch[1]) : null;
+
+    const setsRepsMatch = rest.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*reps/i);
+    const setsDistMatch = rest.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*m\b/i);
+    const repsOnlyMatch = rest.match(/^([\d.]+)\s*reps/i);
+    const distOnlyMatch = rest.match(/^([\d.]+)\s*m\b/i);
+
+    let sets = null, reps = null, distanceM = null;
+    if (setsRepsMatch) {
+      sets = parseFloat(setsRepsMatch[1]);
+      reps = parseFloat(setsRepsMatch[2]);
+    } else if (setsDistMatch) {
+      sets = parseFloat(setsDistMatch[1]);
+      distanceM = parseFloat(setsDistMatch[2]);
+    } else if (repsOnlyMatch) {
+      reps = parseFloat(repsOnlyMatch[1]);
+    } else if (distOnlyMatch) {
+      distanceM = parseFloat(distOnlyMatch[1]);
+    }
+
+    if (!reps && !distanceM) continue;
+    exercises.push({ name, sets, reps, weightKg, distanceM, notes: null });
+  }
+  return { exercises };
+}
+
 export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
