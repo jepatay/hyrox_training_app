@@ -121,6 +121,7 @@ export const exerciseLibraryApi = {
   create: (data) => api.post('/api/exercise-library', data),
   update: (key, data) => api.put(`/api/exercise-library/${key}`, data),
   delete: (key) => api.delete(`/api/exercise-library/${key}`),
+  backfill: () => api.post('/api/exercise-library/backfill', {}),
 };
 
 export const stravaApi = {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import admin from 'firebase-admin';
 import { collections } from '../services/firebase.js';
-import { listLibrary, slugify, sanitizeCredits } from '../services/exerciseLibrary.js';
+import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits } from '../services/exerciseLibrary.js';
 import { suggestExerciseStationCredits } from '../services/claude.js';
 
 const router = Router();
@@ -36,6 +36,30 @@ router.post('/suggest', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to suggest station credits' });
+  }
+});
+
+// POST scan every session ever logged for exercise names not yet in the
+// library and add them (matched if recognized, otherwise a new AI-suggested
+// pending entry) — a one-time catch-up for anything logged before the
+// library existed, or before a given movement was ever seen.
+router.post('/backfill', async (_req, res) => {
+  try {
+    const snap = await collections.sessions().get();
+    const names = new Set();
+    for (const doc of snap.docs) {
+      for (const e of doc.data().extractedExercises?.exercises || []) {
+        if (e?.name?.trim()) names.add(e.name.trim());
+      }
+    }
+    const before = await listLibrary();
+    const beforeKeys = new Set(before.map(e => e.key));
+    const { library } = await resolveExercisesAgainstLibrary([...names].map(name => ({ name })));
+    const added = library.filter(e => !beforeKeys.has(e.key));
+    res.json({ scanned: names.size, addedCount: added.length, library });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to backfill exercise library' });
   }
 });
 

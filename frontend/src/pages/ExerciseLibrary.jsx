@@ -1,103 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { exerciseLibraryApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { STATIONS } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Check, X, Sparkles, BookOpen } from 'lucide-react';
+import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search } from 'lucide-react';
 
-const STATION_LABEL = Object.fromEntries(STATIONS.map(s => [s.key, s]));
+const STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
 
-// Form shape used for both "add new" (key: null) and "edit existing".
-function blankForm() {
+function blankRow() {
   return {
-    key: null,
-    label: '',
-    aliases: '',
-    unit: 'reps',
-    metersPerCal: 10,
-    credits: {}, // stationKey -> 0-100 (percent, as the UI edits it)
-    reasoning: '',
-    status: 'approved',
+    key: null, label: '', aliases: [], unit: 'reps', metersPerCal: 10,
+    credits: {}, reasoning: null, status: 'approved', source: 'user', isNew: true,
   };
 }
 
-function toFormCredits(credits) {
-  const out = {};
-  for (const [k, v] of Object.entries(credits || {})) out[k] = Math.round(v * 100);
-  return out;
-}
-
-function CreditBadges({ credits }) {
-  const entries = Object.entries(credits || {}).filter(([, w]) => w > 0);
-  if (!entries.length) return <span className="text-xs text-muted-foreground">No station credit yet</span>;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {entries.map(([key, weight]) => {
-        const meta = STATION_LABEL[key];
-        return (
-          <span key={key} className="inline-flex items-center gap-1 text-xs bg-secondary rounded-full px-2 py-0.5">
-            <span>{meta?.icon}</span>
-            <span>{meta?.label || key}</span>
-            <span className="text-muted-foreground">{Math.round(weight * 100)}%</span>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function ExerciseCard({ entry, onEdit, onApprove, onReject, onDelete }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-3 px-1 border-t border-border/50 first:border-t-0">
-      <div className="space-y-1.5 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{entry.label}</span>
-          <Badge variant="outline" className="text-[10px] py-0">{entry.unit}{entry.unit === 'cal' && entry.metersPerCal ? ` · ${entry.metersPerCal}m/cal` : ''}</Badge>
-          {entry.source === 'builtin' && <Badge variant="secondary" className="text-[10px] py-0">Built-in</Badge>}
-          {entry.source === 'ai_suggested' && <Badge variant="outline" className="text-[10px] py-0 text-orange-400 border-orange-400/30">AI suggested</Badge>}
-          {entry.status === 'rejected' && <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground">Rejected — excluded</Badge>}
-        </div>
-        <CreditBadges credits={entry.credits} />
-        {entry.reasoning && <p className="text-xs text-muted-foreground italic">"{entry.reasoning}"</p>}
-        {entry.aliases?.length > 0 && (
-          <p className="text-xs text-muted-foreground">Also recognized as: {entry.aliases.join(', ')}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        {entry.status === 'pending' && (
-          <>
-            <Button size="sm" variant="outline" className="h-7 px-2 gap-1 text-green-400 border-green-400/30" onClick={() => onApprove(entry)}>
-              <Check className="h-3.5 w-3.5" /> Approve
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 gap-1 text-muted-foreground" onClick={() => onReject(entry)}>
-              <X className="h-3.5 w-3.5" /> Reject
-            </Button>
-          </>
-        )}
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(entry)}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => onDelete(entry)}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
+// Every editable cell writes straight to `library` state so typing feels
+// instant, then persists on blur (text/number inputs) or immediately
+// (selects) — no separate edit dialog, no explicit save step per row.
 export default function ExerciseLibrary() {
   const [library, setLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(null); // null = dialog closed
-  const [suggesting, setSuggesting] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [suggestingKey, setSuggestingKey] = useState(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [newRow, setNewRow] = useState(blankRow());
   const { toast } = useToast();
 
   useEffect(() => { load(); }, []);
@@ -114,244 +43,304 @@ export default function ExerciseLibrary() {
     }
   }
 
-  function openAdd() {
-    setForm(blankForm());
-  }
-  function openEdit(entry) {
-    setForm({
-      key: entry.key,
-      label: entry.label,
-      aliases: (entry.aliases || []).join(', '),
-      unit: entry.unit,
-      metersPerCal: entry.metersPerCal || 10,
-      credits: toFormCredits(entry.credits),
-      reasoning: entry.reasoning || '',
-      status: entry.status,
-    });
+  function updateLocal(key, patch) {
+    setLibrary(prev => prev.map(e => e.key === key ? { ...e, ...patch } : e));
   }
 
-  async function handleSuggest() {
-    if (!form.label.trim()) {
-      toast({ title: 'Name required', description: 'Type the exercise name first.', variant: 'destructive' });
-      return;
-    }
-    setSuggesting(true);
+  async function persist(key, patch) {
     try {
-      const suggestion = await exerciseLibraryApi.suggest(form.label.trim());
-      setForm(prev => ({
-        ...prev,
+      await exerciseLibraryApi.update(key, patch);
+    } catch (err) {
+      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
+    }
+  }
+
+  function handleTextChange(entry, field, value) {
+    updateLocal(entry.key, { [field]: value });
+  }
+  function handleTextBlur(entry, field) {
+    persist(entry.key, { [field]: entry[field] });
+  }
+  function handleUnitChange(entry, unit) {
+    const patch = { unit, metersPerCal: unit === 'cal' ? (entry.metersPerCal || 10) : null };
+    updateLocal(entry.key, patch);
+    persist(entry.key, patch);
+  }
+  function handleStatusChange(entry, status) {
+    updateLocal(entry.key, { status });
+    persist(entry.key, { status });
+  }
+  function handleCreditChange(entry, stationKey, pct) {
+    const credits = { ...entry.credits };
+    const v = pct === '' ? 0 : Number(pct) / 100;
+    if (v > 0) credits[stationKey] = v; else delete credits[stationKey];
+    updateLocal(entry.key, { credits });
+  }
+  function handleCreditBlur(entry) {
+    persist(entry.key, { credits: entry.credits });
+  }
+
+  async function handleSuggest(entry) {
+    if (!entry.label.trim()) return;
+    setSuggestingKey(entry.key || 'new');
+    try {
+      const suggestion = await exerciseLibraryApi.suggest(entry.label.trim());
+      const patch = {
         unit: suggestion.unit || 'reps',
         metersPerCal: suggestion.metersPerCal || 10,
-        credits: toFormCredits(suggestion.credits),
-        reasoning: suggestion.reasoning || '',
-      }));
+        credits: suggestion.credits || {},
+        reasoning: suggestion.reasoning || null,
+      };
+      if (entry.key) {
+        updateLocal(entry.key, patch);
+        persist(entry.key, patch);
+      } else {
+        setNewRow(prev => ({ ...prev, ...patch }));
+      }
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
-      setSuggesting(false);
+      setSuggestingKey(null);
     }
   }
 
-  function setCredit(stationKey, value) {
-    setForm(prev => ({ ...prev, credits: { ...prev.credits, [stationKey]: value === '' ? undefined : Number(value) } }));
+  async function handleDelete(entry) {
+    if (!confirm(`Delete "${entry.label}" from the library?`)) return;
+    setLibrary(prev => prev.filter(e => e.key !== entry.key));
+    try {
+      await exerciseLibraryApi.delete(entry.key);
+    } catch (err) {
+      toast({ title: 'Delete failed', description: err.message, variant: 'destructive' });
+      load();
+    }
   }
 
-  async function handleSave() {
-    if (!form.label.trim()) {
+  async function handleAddRow() {
+    if (!newRow.label.trim()) {
       toast({ title: 'Name required', variant: 'destructive' });
       return;
     }
-    setSaving(true);
     try {
-      const payload = {
-        label: form.label.trim(),
-        aliases: form.aliases.split(',').map(a => a.trim()).filter(Boolean),
-        unit: form.unit,
-        metersPerCal: form.unit === 'cal' ? Number(form.metersPerCal) || 10 : null,
-        credits: Object.fromEntries(Object.entries(form.credits).filter(([, v]) => v > 0).map(([k, v]) => [k, v / 100])),
-        reasoning: form.reasoning || null,
-      };
-      if (form.key) {
-        await exerciseLibraryApi.update(form.key, payload);
-      } else {
-        await exerciseLibraryApi.create(payload);
-      }
-      setForm(null);
-      await load();
-      toast({ title: 'Saved' });
+      const created = await exerciseLibraryApi.create({
+        label: newRow.label.trim(),
+        aliases: newRow.aliases,
+        unit: newRow.unit,
+        metersPerCal: newRow.metersPerCal,
+        credits: newRow.credits,
+        reasoning: newRow.reasoning,
+      });
+      setLibrary(prev => [...prev, created].sort((a, b) => a.label.localeCompare(b.label)));
+      setNewRow(blankRow());
+      toast({ title: 'Added', description: `${created.label} added to the library.` });
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
     }
   }
 
-  async function handleApprove(entry) {
+  async function handleScan() {
+    setScanning(true);
     try {
-      await exerciseLibraryApi.update(entry.key, { status: 'approved' });
-      await load();
-      toast({ title: 'Approved', description: `${entry.label} now counts toward station scores.` });
+      const result = await exerciseLibraryApi.backfill();
+      setLibrary(result.library || []);
+      toast({
+        title: 'Scan complete',
+        description: `Scanned ${result.scanned} distinct exercise name(s) from every logged session — ${result.addedCount} new one(s) added${result.addedCount ? ' as pending review.' : '.'}`,
+      });
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setScanning(false);
     }
   }
-  async function handleReject(entry) {
-    try {
-      await exerciseLibraryApi.update(entry.key, { status: 'rejected' });
-      await load();
-    } catch (err) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  }
-  async function handleDelete(entry) {
-    if (!confirm(`Delete "${entry.label}" from the library?`)) return;
-    try {
-      await exerciseLibraryApi.delete(entry.key);
-      await load();
-    } catch (err) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  }
+
+  const filtered = useMemo(() => {
+    return library.filter(e => {
+      if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return e.label?.toLowerCase().includes(q) || (e.aliases || []).some(a => a.toLowerCase().includes(q));
+    });
+  }, [library, statusFilter, search]);
+
+  const pendingCount = library.filter(e => e.status === 'pending').length;
 
   if (loading) {
     return <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
   }
 
-  const pending = library.filter(e => e.status === 'pending');
-  const approved = library.filter(e => e.status === 'approved');
-  const rejected = library.filter(e => e.status === 'rejected');
-
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-5 w-5" /> Exercise Library</h1>
-          <p className="text-muted-foreground text-sm">
-            Every movement the app can recognize, and exactly how much of it counts toward each of the 9 HYROX stations. Anything not in here yet gets added automatically as "pending" the next time it's logged — it won't count toward a score until you approve it.
+          <p className="text-muted-foreground text-sm max-w-2xl">
+            Every movement the app recognizes, and exactly how much it counts toward each of the 9 HYROX stations. Type directly into any cell — it saves as you go. A "pending" row won't count toward a score until you set it to approved.
           </p>
         </div>
-        <Button size="sm" className="gap-1.5 shrink-0" onClick={openAdd}>
-          <Plus className="h-3.5 w-3.5" /> Add Exercise
+        <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={handleScan} disabled={scanning}>
+          <ScanSearch className="h-3.5 w-3.5" /> {scanning ? 'Scanning...' : 'Scan Past Sessions'}
         </Button>
       </div>
 
-      {pending.length > 0 && (
-        <Card className="border-orange-400/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-orange-400">
-              <Sparkles className="h-4 w-4" /> Pending Review ({pending.length})
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Logged in a session but not yet counted toward any score. Approve to start scoring, edit the suggested credit first, or reject to exclude permanently.</p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {pending.map(e => (
-              <ExerciseCard key={e.key} entry={e} onEdit={openEdit} onApprove={handleApprove} onReject={handleReject} onDelete={handleDelete} />
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Approved ({approved.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {approved.map(e => (
-            <ExerciseCard key={e.key} entry={e} onEdit={openEdit} onApprove={handleApprove} onReject={handleReject} onDelete={handleDelete} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative w-64">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input className="pl-8 h-8" placeholder="Search exercises..." value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div className="flex gap-1">
+          {['all', 'pending', 'approved', 'rejected'].map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                statusFilter === s ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-secondary'
+              }`}
+            >
+              {s === 'all' ? `All (${library.length})` : s === 'pending' ? `Pending (${pendingCount})` : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {rejected.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Rejected ({rejected.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {rejected.map(e => (
-              <ExerciseCard key={e.key} entry={e} onEdit={openEdit} onApprove={handleApprove} onReject={handleReject} onDelete={handleDelete} />
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {form && (
-        <Dialog open onOpenChange={() => setForm(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{form.key ? 'Edit Exercise' : 'Add Exercise'}</DialogTitle>
-              <DialogDescription>
-                {form.key ? 'Adjust the name, unit, or how much this counts toward each station.' : 'Type the exercise name, then get an AI-suggested station mapping to start from — tweak anything before saving.'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
-              <div className="space-y-1.5">
-                <Label>Name</Label>
-                <div className="flex gap-2">
-                  <Input value={form.label} onChange={e => setForm(prev => ({ ...prev, label: e.target.value }))} placeholder="e.g. Box Jump" />
-                  {!form.key && (
-                    <Button type="button" variant="outline" className="gap-1.5 shrink-0" disabled={suggesting} onClick={handleSuggest}>
-                      <Sparkles className="h-3.5 w-3.5" /> {suggesting ? 'Thinking...' : 'Suggest'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Also recognized as (comma-separated)</Label>
-                <Input value={form.aliases} onChange={e => setForm(prev => ({ ...prev, aliases: e.target.value }))} placeholder="box jumps, plyo box" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Unit</Label>
-                  <Select value={form.unit} onValueChange={v => setForm(prev => ({ ...prev, unit: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+      <div className="overflow-x-auto border border-border rounded-lg">
+        <table className="w-full text-sm min-w-[1100px]">
+          <thead>
+            <tr className="text-left text-[10px] text-muted-foreground uppercase tracking-wide bg-secondary/40">
+              <th className="font-medium py-2 px-2 min-w-[160px]">Name</th>
+              <th className="font-medium py-2 px-2 min-w-[100px]">Unit</th>
+              {STATIONS.map(s => (
+                <th key={s.key} className="font-medium py-2 px-1 w-14 text-center" title={s.label}>{s.icon}</th>
+              ))}
+              <th className="font-medium py-2 px-2 min-w-[110px]">Status</th>
+              <th className="font-medium py-2 px-2 w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(entry => (
+              <tr key={entry.key} className="border-t border-border/50 hover:bg-secondary/20">
+                <td className="p-1">
+                  <Input
+                    className="h-8 text-xs border-transparent bg-transparent hover:border-border focus:border-border"
+                    value={entry.label}
+                    onChange={e => handleTextChange(entry, 'label', e.target.value)}
+                    onBlur={() => handleTextBlur(entry, 'label')}
+                  />
+                </td>
+                <td className="p-1">
+                  <div className="flex items-center gap-1">
+                    <Select value={entry.unit} onValueChange={v => handleUnitChange(entry, v)}>
+                      <SelectTrigger className="h-8 text-xs border-transparent bg-transparent hover:border-border"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="reps">reps</SelectItem>
+                        <SelectItem value="m">m</SelectItem>
+                        <SelectItem value="cal">cal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {entry.unit === 'cal' && (
+                      <Input
+                        type="number" step="0.5" className="h-8 w-14 text-xs px-1"
+                        value={entry.metersPerCal ?? ''}
+                        onChange={e => handleTextChange(entry, 'metersPerCal', e.target.value)}
+                        onBlur={() => persist(entry.key, { metersPerCal: Number(entry.metersPerCal) || 10 })}
+                        title="meters per calorie"
+                      />
+                    )}
+                  </div>
+                </td>
+                {STATIONS.map(s => (
+                  <td key={s.key} className="p-1">
+                    <Input
+                      type="number" min="0" max="100"
+                      className="h-8 w-12 text-xs px-1 text-center border-transparent bg-transparent hover:border-border focus:border-border"
+                      value={entry.credits?.[s.key] != null ? Math.round(entry.credits[s.key] * 100) : ''}
+                      onChange={e => handleCreditChange(entry, s.key, e.target.value)}
+                      onBlur={() => handleCreditBlur(entry)}
+                      placeholder="0"
+                    />
+                  </td>
+                ))}
+                <td className="p-1">
+                  <Select value={entry.status} onValueChange={v => handleStatusChange(entry, v)}>
+                    <SelectTrigger className={`h-8 text-xs border-transparent bg-transparent hover:border-border ${
+                      entry.status === 'pending' ? 'text-orange-400' : entry.status === 'rejected' ? 'text-muted-foreground' : 'text-green-400'
+                    }`}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="reps">Reps</SelectItem>
-                      <SelectItem value="m">Distance (m)</SelectItem>
-                      <SelectItem value="cal">Calories (cardio machine)</SelectItem>
+                      {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                </div>
-                {form.unit === 'cal' && (
-                  <div className="space-y-1.5">
-                    <Label>Meters per calorie</Label>
-                    <Input type="number" step="0.5" value={form.metersPerCal} onChange={e => setForm(prev => ({ ...prev, metersPerCal: e.target.value }))} />
+                </td>
+                <td className="p-1">
+                  <div className="flex items-center">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={suggestingKey === entry.key} onClick={() => handleSuggest(entry)} title="Re-suggest station credit">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(entry)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
-                )}
-              </div>
+                </td>
+              </tr>
+            ))}
 
-              <div className="space-y-2">
-                <Label>Station credit — how much of this counts toward each station</Label>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  {STATIONS.map(s => (
-                    <div key={s.key} className="flex items-center gap-2">
-                      <span className="text-sm w-6 text-center">{s.icon}</span>
-                      <span className="text-xs text-muted-foreground flex-1">{s.label}</span>
-                      <Input
-                        type="number" min="0" max="100" className="w-16 h-8 text-xs"
-                        value={form.credits[s.key] ?? ''}
-                        onChange={e => setCredit(s.key, e.target.value)}
-                        placeholder="0"
-                      />
-                      <span className="text-xs text-muted-foreground">%</span>
-                    </div>
-                  ))}
+            {/* Always-visible add row */}
+            <tr className="border-t border-border bg-secondary/20">
+              <td className="p-1">
+                <Input
+                  className="h-8 text-xs" placeholder="New exercise name..."
+                  value={newRow.label}
+                  onChange={e => setNewRow(prev => ({ ...prev, label: e.target.value }))}
+                />
+              </td>
+              <td className="p-1">
+                <div className="flex items-center gap-1">
+                  <Select value={newRow.unit} onValueChange={v => setNewRow(prev => ({ ...prev, unit: v, metersPerCal: v === 'cal' ? (prev.metersPerCal || 10) : null }))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reps">reps</SelectItem>
+                      <SelectItem value="m">m</SelectItem>
+                      <SelectItem value="cal">cal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {newRow.unit === 'cal' && (
+                    <Input type="number" step="0.5" className="h-8 w-14 text-xs px-1" value={newRow.metersPerCal ?? ''} onChange={e => setNewRow(prev => ({ ...prev, metersPerCal: e.target.value }))} />
+                  )}
                 </div>
-              </div>
+              </td>
+              {STATIONS.map(s => (
+                <td key={s.key} className="p-1">
+                  <Input
+                    type="number" min="0" max="100" className="h-8 w-12 text-xs px-1 text-center"
+                    value={newRow.credits?.[s.key] != null ? Math.round(newRow.credits[s.key] * 100) : ''}
+                    onChange={e => {
+                      const v = e.target.value === '' ? 0 : Number(e.target.value) / 100;
+                      setNewRow(prev => {
+                        const credits = { ...prev.credits };
+                        if (v > 0) credits[s.key] = v; else delete credits[s.key];
+                        return { ...prev, credits };
+                      });
+                    }}
+                    placeholder="0"
+                  />
+                </td>
+              ))}
+              <td className="p-1 text-xs text-muted-foreground">new</td>
+              <td className="p-1">
+                <div className="flex items-center">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={suggestingKey === 'new'} onClick={() => handleSuggest(newRow)} title="Suggest station credit">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary" onClick={handleAddRow} title="Add">
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-              <div className="space-y-1.5">
-                <Label>Reasoning (optional)</Label>
-                <Textarea rows={2} value={form.reasoning} onChange={e => setForm(prev => ({ ...prev, reasoning: e.target.value }))} placeholder="Why does this transfer the way it does?" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setForm(null)}>Cancel</Button>
-              <Button type="button" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+      {filtered.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4">No exercises match this filter.</p>
       )}
     </div>
   );
