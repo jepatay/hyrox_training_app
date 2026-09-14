@@ -9,6 +9,20 @@ import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search } from 'lucide-rea
 
 const STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
 
+// Short column labels so the 9 station columns are identifiable without
+// hovering for a tooltip — the icon alone reads as decoration, not a label.
+const STATION_SHORT_LABEL = {
+  running: 'Run',
+  skierg: 'Ski',
+  sled_push: 'S.Push',
+  sled_pull: 'S.Pull',
+  row_erg: 'Row',
+  farmers_carry: 'Farmer',
+  sandbag_lunges: 'Lunges',
+  burpee_broad_jump: 'BBJ',
+  wall_balls: 'W.Ball',
+};
+
 function blankRow() {
   return {
     key: null, label: '', aliases: [], unit: 'reps', metersPerCal: 10,
@@ -203,13 +217,18 @@ export default function ExerciseLibrary() {
       </div>
 
       <div className="overflow-x-auto border border-border rounded-lg">
-        <table className="w-full text-sm min-w-[1100px]">
+        <table className="w-full text-sm min-w-[1180px]">
           <thead>
             <tr className="text-left text-[10px] text-muted-foreground uppercase tracking-wide bg-secondary/40">
               <th className="font-medium py-2 px-2 min-w-[160px]">Name</th>
               <th className="font-medium py-2 px-2 min-w-[100px]">Unit</th>
               {STATIONS.map(s => (
-                <th key={s.key} className="font-medium py-2 px-1 w-14 text-center" title={s.label}>{s.icon}</th>
+                <th key={s.key} className="font-medium py-2 px-1 w-16 text-center" title={s.label}>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-sm">{s.icon}</span>
+                    <span className="text-[9px] normal-case leading-none whitespace-nowrap">{STATION_SHORT_LABEL[s.key]}</span>
+                  </div>
+                </th>
               ))}
               <th className="font-medium py-2 px-2 min-w-[110px]">Status</th>
               <th className="font-medium py-2 px-2 w-10"></th>
@@ -251,7 +270,7 @@ export default function ExerciseLibrary() {
                   <td key={s.key} className="p-1">
                     <Input
                       type="number" min="0" max="100"
-                      className="h-8 w-12 text-xs px-1 text-center border-transparent bg-transparent hover:border-border focus:border-border"
+                      className="h-8 w-14 text-xs px-1 text-center border-transparent bg-transparent hover:border-border focus:border-border"
                       value={entry.credits?.[s.key] != null ? Math.round(entry.credits[s.key] * 100) : ''}
                       onChange={e => handleCreditChange(entry, s.key, e.target.value)}
                       onBlur={() => handleCreditBlur(entry)}
@@ -309,7 +328,7 @@ export default function ExerciseLibrary() {
               {STATIONS.map(s => (
                 <td key={s.key} className="p-1">
                   <Input
-                    type="number" min="0" max="100" className="h-8 w-12 text-xs px-1 text-center"
+                    type="number" min="0" max="100" className="h-8 w-14 text-xs px-1 text-center"
                     value={newRow.credits?.[s.key] != null ? Math.round(newRow.credits[s.key] * 100) : ''}
                     onChange={e => {
                       const v = e.target.value === '' ? 0 : Number(e.target.value) / 100;
