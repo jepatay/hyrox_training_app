@@ -15,6 +15,7 @@ import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
 import Drafts from '@/pages/Drafts';
 import Trends from '@/pages/Trends';
 import StationModel from '@/pages/StationModel';
+import ExerciseLibrary from '@/pages/ExerciseLibrary';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -49,6 +50,7 @@ function AppContent() {
         <Route path="/knowledge" element={<KnowledgeLibrary />} />
         <Route path="/trends" element={<Trends />} />
         <Route path="/station-model" element={<StationModel />} />
+        <Route path="/exercise-library" element={<ExerciseLibrary />} />
       </Routes>
     </Layout>
   );

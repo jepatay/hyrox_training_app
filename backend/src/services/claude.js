@@ -383,11 +383,12 @@ Return:
   "estimatedPace": "<e.g. 4:30/km or null>",
   "exercises": [
     {
-      "name": "<sledPush|sledPull|farmersCarry|wallBalls|skiErg|rowErg|burpeeBroadJump|walkingLunges|squat|thruster|deadlift|benchPress|pullUp|run|other>",
+      "name": "<short Title Case name for the movement, e.g. 'Wall Balls', 'Kettlebell Swing', 'Assault Bike', 'Thruster', 'Pull Up'. Use the same consistent name for every mention of the same movement in this response. Do NOT force it into a fixed category — if it's a real, recognizable exercise, name it specifically rather than calling it 'Other'.>",
       "sets": <number or null>,
       "reps": <number or null>,
       "weightKg": <number or null>,
       "distanceM": <number or null>,
+      "calories": <number or null — ONLY for a cardio machine reading given in calories, e.g. an assault bike/echo bike/rower display showing "200 cal". Do not fill both calories and distanceM for the same entry.>,
       "notes": "<any other relevant detail or null>"
     }
   ]
@@ -396,84 +397,83 @@ Return:
 Only include what is explicitly mentioned. Return empty exercises array if nothing structured is mentioned.
 
 CIRCUITS AND REPEATED ROUNDS — read this carefully, it's the most common source of error:
-Athletes write repeated rounds in many different ways: an explicit "N rounds of the following:" prefix, numbered labels ("Round 1:", "Round 2:", ... "Round N:"), or simply the same (or near-identical) block of exercises appearing multiple times back-to-back with no explicit count or numbering at all (e.g. separated by blank lines, or each just starting with a time like "round, 5 min 51 seconds"). Whatever the format, apply ONE general rule: COUNT how many times each block of exercises actually appears in the text — do not rely on the notes stating a count, and do not guess or under-count — then for every exercise, SUM its reps/distance across ALL of those repetitions into ONE combined total (e.g. an exercise appearing in 4 near-identical blocks has its reps/distance multiplied by 4, not reported as if it happened once). If an exercise's weight changes partway through the repeated blocks, output SEPARATE entries per weight bracket, each totaled only across the repetitions logged at that weight. A line that appears only ONCE in the notes (not part of any repeated block) keeps its stated numbers as-is — don't multiply it by the round count of a different, repeated section.`;
+Athletes write repeated rounds in many different ways: an explicit "N rounds of the following:" prefix, numbered labels ("Round 1:", "Round 2:", ... "Round N:"), or simply the same (or near-identical) block of exercises appearing multiple times back-to-back with no explicit count or numbering at all (e.g. separated by blank lines, or each just starting with a time like "round, 5 min 51 seconds"). Whatever the format, apply ONE general rule: COUNT how many times each block of exercises actually appears in the text — do not rely on the notes stating a count, and do not guess or under-count — then for every exercise, SUM its reps/distance/calories across ALL of those repetitions into ONE combined total (e.g. an exercise appearing in 4 near-identical blocks has its reps/distance/calories multiplied by 4, not reported as if it happened once — this can be expressed either as sets:4 with the per-round value, or as the single already-multiplied total with sets:1, whichever you're more confident is accurate). If an exercise's weight changes partway through the repeated blocks, output SEPARATE entries per weight bracket, each totaled only across the repetitions logged at that weight. A line that appears only ONCE in the notes (not part of any repeated block) keeps its stated numbers as-is — don't multiply it by the round count of a different, repeated section.`;
   return chatJson(prompt, 1000);
 }
-
-// Kept in sync with the extraction enum above — used both to render the
-// human-readable review lines and to parse them back after editing.
-const EXERCISE_LABELS = {
-  sledPush: 'Sled Push',
-  sledPull: 'Sled Pull',
-  farmersCarry: 'Farmers Carry',
-  wallBalls: 'Wall Balls',
-  skiErg: 'Ski Erg',
-  rowErg: 'Row Erg',
-  burpeeBroadJump: 'Burpee Broad Jump',
-  walkingLunges: 'Walking Lunges',
-  squat: 'Squat',
-  thruster: 'Thruster',
-  deadlift: 'Deadlift',
-  benchPress: 'Bench Press',
-  pullUp: 'Pull Up',
-  run: 'Run',
-  other: 'Other',
-};
-const LABEL_TO_EXERCISE_NAME = Object.fromEntries(
-  Object.entries(EXERCISE_LABELS).map(([name, label]) => [label.toLowerCase(), name])
-);
 
 // Turns extracted exercises into one plain-text line per exercise, spelling
 // out the computed total (e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps
 // total") instead of a table of separate fields — this is what the athlete
 // reviews and edits directly before scoring, so what they see IS what gets
-// scored, not a paraphrase of it.
-export function renderExtractionSummary(extracted) {
+// scored, not a paraphrase of it. `library` (from exerciseLibrary.js) supplies
+// the recognized label and flags anything still awaiting approval so nothing
+// silently counts toward a score the athlete hasn't seen.
+export function renderExtractionSummary(extracted, library = []) {
   const exercises = extracted?.exercises || [];
   if (!exercises.length) return '';
+  const byKey = new Map(library.map(e => [e.key, e]));
   return exercises.map(e => {
-    const label = EXERCISE_LABELS[e.name] || e.name || 'Exercise';
+    const entry = e.libraryKey ? byKey.get(e.libraryKey) : null;
+    const label = entry?.label || e.name || 'Exercise';
+    const pendingTag = entry?.status === 'pending' ? ' [new — pending review in Exercise Library]' : '';
     const weight = e.weightKg ? ` @ ${e.weightKg}kg` : '';
     const sets = e.sets && e.sets > 1 ? e.sets : null;
+
+    if (e.calories) {
+      const total = (sets || 1) * e.calories;
+      const setsPrefix = sets ? `${sets} × ` : '';
+      const totalSuffix = sets ? ` = ${total} cal total` : '';
+      return `${label}: ${setsPrefix}${e.calories} cal${totalSuffix}${pendingTag}`;
+    }
     if (e.reps) {
       const total = (sets || 1) * e.reps;
       const setsPrefix = sets ? `${sets} × ` : '';
       const totalSuffix = sets ? ` = ${total} reps total` : '';
-      return `${label}: ${setsPrefix}${e.reps} reps${weight}${totalSuffix}`;
+      return `${label}: ${setsPrefix}${e.reps} reps${weight}${totalSuffix}${pendingTag}`;
     }
     if (e.distanceM) {
       const total = (sets || 1) * e.distanceM;
       const setsPrefix = sets ? `${sets} × ` : '';
       const totalSuffix = sets ? ` = ${total}m total` : '';
-      return `${label}: ${setsPrefix}${e.distanceM}m${weight}${totalSuffix}`;
+      return `${label}: ${setsPrefix}${e.distanceM}m${weight}${totalSuffix}${pendingTag}`;
     }
     return `${label}: ${e.notes || 'logged'} (no reps/distance captured — won't count toward station scores)`;
   }).join('\n');
 }
 
 // Parses the athlete's (possibly hand-edited) summary lines straight back
-// into structured exercises with plain regex — deterministic, not another AI
-// guess, so the reviewed text is exactly what scoring sees.
+// into raw exercises with plain regex — deterministic, not another AI guess.
+// The leading label is kept as-is (not matched against the library here);
+// resolveExercisesAgainstLibrary does that next, so a hand-typed new exercise
+// name flows through the same pending-approval path as an AI extraction.
 export function parseExtractionSummary(text) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   const exercises = [];
   for (const line of lines) {
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
-    const labelPart = line.slice(0, colonIdx).trim().toLowerCase();
-    const rest = line.slice(colonIdx + 1).trim();
-    const name = LABEL_TO_EXERCISE_NAME[labelPart] || 'other';
+    const name = line.slice(0, colonIdx).trim();
+    let rest = line.slice(colonIdx + 1).trim();
+    rest = rest.replace(/\s*\[new[^\]]*\]\s*$/i, '').trim();
+    if (!name) continue;
 
     const weightMatch = rest.match(/@\s*([\d.]+)\s*kg/i);
     const weightKg = weightMatch ? parseFloat(weightMatch[1]) : null;
 
+    const setsCalMatch = rest.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*cal/i);
+    const calOnlyMatch = rest.match(/^([\d.]+)\s*cal/i);
     const setsRepsMatch = rest.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*reps/i);
     const setsDistMatch = rest.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*m\b/i);
     const repsOnlyMatch = rest.match(/^([\d.]+)\s*reps/i);
     const distOnlyMatch = rest.match(/^([\d.]+)\s*m\b/i);
 
-    let sets = null, reps = null, distanceM = null;
-    if (setsRepsMatch) {
+    let sets = null, reps = null, distanceM = null, calories = null;
+    if (setsCalMatch) {
+      sets = parseFloat(setsCalMatch[1]);
+      calories = parseFloat(setsCalMatch[2]);
+    } else if (calOnlyMatch) {
+      calories = parseFloat(calOnlyMatch[1]);
+    } else if (setsRepsMatch) {
       sets = parseFloat(setsRepsMatch[1]);
       reps = parseFloat(setsRepsMatch[2]);
     } else if (setsDistMatch) {
@@ -485,10 +485,39 @@ export function parseExtractionSummary(text) {
       distanceM = parseFloat(distOnlyMatch[1]);
     }
 
-    if (!reps && !distanceM) continue;
-    exercises.push({ name, sets, reps, weightKg, distanceM, notes: null });
+    if (!reps && !distanceM && !calories) continue;
+    exercises.push({ name, sets, reps, weightKg, distanceM, calories, notes: null });
   }
   return { exercises };
+}
+
+// Asks the model how a not-yet-recognized exercise should count toward the 9
+// HYROX stations — used only to seed a new library entry, which starts
+// 'pending' and excluded from scoring until the athlete reviews and approves
+// it. Multiple stations can get partial credit (e.g. a kettlebell swing
+// splitting credit between burpee broad jump and sandbag lunges).
+export async function suggestExerciseStationCredits({ name, notes }) {
+  const prompt = `You are a HYROX exercise-transfer expert. An athlete logged an exercise that isn't yet in the training app's library: "${name}"${notes ? ` (context: ${notes})` : ''}.
+
+The 9 HYROX stations and their race demand:
+${renderStationBenchmarks()}
+
+Decide how much this exercise should count toward each station, as a weight from 0 to 1 (1 = fully equivalent to doing that station itself, 0 = no meaningful transfer). Only include stations with genuine transfer — omit the rest rather than listing them at 0. Most exercises meaningfully transfer to at most 1-3 stations; only give a plain literal match (e.g. "Sled Push") a weight of 1.
+
+Also decide:
+- "unit": "reps", "m" (distance-based), or "cal" (a cardio machine reading given in calories)
+- if unit is "cal", "metersPerCal": a reasonable meters-per-calorie conversion for that specific machine (e.g. ~10-15 for an assault/air bike, ~15-20 for a rower)
+
+Return JSON only:
+{
+  "unit": "<reps|m|cal>",
+  "metersPerCal": <number or null>,
+  "credits": { "<stationKey>": <0-1>, ... },
+  "reasoning": "<one sentence explaining the transfer logic>"
+}
+
+Valid station keys: running, skierg, sled_push, sled_pull, row_erg, farmers_carry, sandbag_lunges, burpee_broad_jump, wall_balls.`;
+  return chatJson(prompt, 400);
 }
 
 export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
@@ -741,7 +770,7 @@ Pick "type" based on the dominant or most structured activity described. If noth
   return chatJson(prompt, 500);
 }
 
-const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
+export const STATION_KEYS = ['running', 'skierg', 'sled_push', 'sled_pull', 'row_erg', 'farmers_carry', 'sandbag_lunges', 'burpee_broad_jump', 'wall_balls'];
 
 // HYROX Open Men race-standard demand per station — the fixed anchor for
 // what "4" means. (Open Men matches this app's other default division
@@ -828,56 +857,55 @@ function rpeIntensityMultiplier(rpe) {
   return 1.6;                 // 9-10: max / VO2max intervals
 }
 
-const EXTRACTION_NAME_TO_STATION = {
-  sledPush: 'sled_push',
-  sledPull: 'sled_pull',
-  farmersCarry: 'farmers_carry',
-  wallBalls: 'wall_balls',
-  skiErg: 'skierg',
-  rowErg: 'row_erg',
-  burpeeBroadJump: 'burpee_broad_jump',
-  walkingLunges: 'sandbag_lunges',
-  run: 'running',
-  thruster: 'wall_balls', // squat-to-press — full credit, same as a literal wall ball rep
-};
-
 // Computes, per station, how the session's logged volume/load/intensity
 // compares to HYROX Open Men race demand — as a single ratio the model can
 // apply directly, instead of it eyeballing "high volume" from prose (which
 // is what let very different sessions land on the identical score before).
-function computeStationEquivalence(session, benchmarkOverrides) {
+// `library` (from exerciseLibrary.js) drives which station(s) each extracted
+// exercise counts toward and at what weight — a movement can split credit
+// across several stations (e.g. an assault bike crediting running/ski/row).
+// Only 'approved' library entries count; a still-pending exercise (unrecognized,
+// awaiting the athlete's review) contributes nothing until approved.
+function computeStationEquivalence(session, benchmarkOverrides, library = []) {
   const byStation = {};
   const bump = (key) => (byStation[key] ||= { workKg: 0, volume: 0, distanceM: 0, reps: 0 });
+  const libraryByKey = new Map(library.map(e => [e.key, e]));
 
   for (const e of session.extractedExercises?.exercises || []) {
-    if (!e?.name) continue;
-    let stationKey = EXTRACTION_NAME_TO_STATION[e.name];
-    // Squat-pattern movements transfer to wall balls at different strengths:
-    // thrusters add the explosive press/throw phase wall balls actually need,
-    // so they get full credit; a plain squat shares only the squat-down half
-    // of the movement, so it earns partial credit, not a full match.
-    let creditMultiplier = 1.0;
-    if (!stationKey && /thruster/i.test(e.notes || '')) {
-      stationKey = 'wall_balls';
-    } else if (!stationKey && e.name === 'squat') {
-      stationKey = 'wall_balls';
-      creditMultiplier = 0.35;
-    }
-    if (!stationKey) continue;
+    const entry = e?.libraryKey ? libraryByKey.get(e.libraryKey) : null;
+    if (!entry || entry.status !== 'approved' || !entry.credits) continue;
 
-    const volume = e.distanceM
-      ? (e.sets || 1) * e.distanceM
-      : (e.sets && e.reps ? e.sets * e.reps : (e.reps || 0));
-    if (!volume) continue;
-
-    const station = bump(stationKey);
-    if (e.weightKg) {
-      station.workKg += e.weightKg * volume * creditMultiplier;
-      station.volume += volume * creditMultiplier;
+    let rawVolume;
+    if (e.calories) {
+      rawVolume = (e.sets || 1) * e.calories * (entry.metersPerCal || 10);
     } else if (e.distanceM) {
-      station.distanceM += volume * creditMultiplier;
+      rawVolume = (e.sets || 1) * e.distanceM;
+    } else if (e.sets && e.reps) {
+      rawVolume = e.sets * e.reps;
     } else {
-      station.reps += volume * creditMultiplier;
+      rawVolume = e.reps || 0;
+    }
+    if (!rawVolume) continue;
+    const isDistanceLike = !!(e.distanceM || e.calories);
+
+    for (const [stationKey, weight] of Object.entries(entry.credits)) {
+      if (!weight) continue;
+      const station = bump(stationKey);
+      const creditedVolume = rawVolume * weight;
+      // Which bucket a credit lands in depends on the DESTINATION station's
+      // kind, not just whether the source exercise had a weight — a weighted
+      // kettlebell swing crediting bodyweight-kind burpee broad jump still
+      // needs to land as volume/reps, since that station has no weight axis
+      // for the results loop below to read workKg back out of.
+      const destKind = STATION_BENCHMARKS.find(b => b.key === stationKey)?.kind;
+      if (destKind === 'work' && e.weightKg) {
+        station.workKg += e.weightKg * creditedVolume;
+        station.volume += creditedVolume;
+      } else if (isDistanceLike) {
+        station.distanceM += creditedVolume;
+      } else {
+        station.reps += creditedVolume;
+      }
     }
   }
 
@@ -959,7 +987,7 @@ function tierFromRatio(ratio, thresholds) {
   return 1;
 }
 
-export async function generateStationScores({ session, knowledge, stationModel }) {
+export async function generateStationScores({ session, knowledge, stationModel, library }) {
   const isHyroxSession = session.type === 'hyrox_training' || session.type === 'hyrox_race' || session.type === 'hyrox_competition';
   const isRunSession = session.type === 'running';
   const isStrengthSession = session.type === 'gym_strength';
@@ -976,12 +1004,13 @@ export async function generateStationScores({ session, knowledge, stationModel }
           const sets = e.sets ? `${e.sets}×${e.reps || '?'}` : (e.reps ? `${e.reps} reps` : '');
           const weight = e.weightKg ? `@ ${e.weightKg}kg` : '';
           const dist = e.distanceM ? `${e.distanceM}m` : '';
-          return `- ${e.name}${sets ? ` ${sets}` : ''}${weight ? ` ${weight}` : ''}${dist ? ` ${dist}` : ''}${e.notes ? ` (${e.notes})` : ''}`;
+          const cal = e.calories ? `${e.calories} cal` : '';
+          return `- ${e.name}${sets ? ` ${sets}` : ''}${weight ? ` ${weight}` : ''}${dist ? ` ${dist}` : ''}${cal ? ` ${cal}` : ''}${e.notes ? ` (${e.notes})` : ''}`;
         })
         .join('\n')
     : null;
 
-  const equivalence = computeStationEquivalence(session, benchmarkOverrides);
+  const equivalence = computeStationEquivalence(session, benchmarkOverrides, library);
   const equivalenceLines = Object.entries(equivalence).map(([key, { ratio, basis }]) => {
     const label = STATION_BENCHMARKS.find(b => b.key === key)?.label || key;
     return `- ${label}: ${basis} → ${Math.round(ratio * 100)}% of race demand`;

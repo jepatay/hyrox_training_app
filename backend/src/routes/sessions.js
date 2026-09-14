@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
 import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary } from '../services/claude.js';
+import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -14,8 +15,10 @@ async function runBackgroundJobs(session, { notesChanged = false, isEdit = false
   // Re-run whenever notes changed so stale extraction never lingers after an edit.
   const needsExtraction = session.notes?.trim() && session.status === 'completed' && (notesChanged || !session.extractedExercises);
   if (needsExtraction) {
-    const extracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
-    if (extracted && session.id) {
+    const rawExtracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    if (rawExtracted && session.id) {
+      const { exercises } = await resolveExercisesAgainstLibrary(rawExtracted.exercises);
+      const extracted = { ...rawExtracted, exercises };
       await collections.sessions().doc(session.id).update({ extractedExercises: extracted });
       session = { ...session, extractedExercises: extracted };
     }
@@ -24,13 +27,14 @@ async function runBackgroundJobs(session, { notesChanged = false, isEdit = false
   // Refresh station impact scores after an edit changes the underlying training data.
   // (On creation, the frontend already triggers this explicitly — skip to avoid a duplicate call.)
   if (isEdit && notesChanged && session.status === 'completed') {
-    const [knowledgeDoc, profileDoc] = await Promise.all([
+    const [knowledgeDoc, profileDoc, library] = await Promise.all([
       collections.knowledge().doc('exercise_transferability').get(),
       collections.profile().doc('main').get(),
+      listLibrary(),
     ]);
     const knowledge = knowledgeDoc.exists ? knowledgeDoc.data().content : null;
     const stationModel = profileDoc.exists ? profileDoc.data().stationModel : null;
-    const result = await generateStationScores({ session, knowledge, stationModel });
+    const result = await generateStationScores({ session, knowledge, stationModel, library });
     if (result && session.id) {
       await collections.sessions().doc(session.id).update({
         stationScores: result.scores,
@@ -121,12 +125,14 @@ router.post('/:id/extract', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Not found' });
     if (!session.notes?.trim()) return res.json({ extractedExercises: null, summaryText: '' });
 
-    const extracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    const rawExtracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
+    const { exercises, library } = await resolveExercisesAgainstLibrary(rawExtracted?.exercises);
+    const extracted = rawExtracted ? { ...rawExtracted, exercises } : null;
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted) });
+    res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted, library) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to extract exercises' });
@@ -136,15 +142,20 @@ router.post('/:id/extract', async (req, res) => {
 // POST re-parse the athlete's (possibly hand-edited) review text back into
 // structured exercises and persist it. Deterministic regex parsing, not
 // another AI guess — the confirmed text is exactly what scoring will see.
+// Any line naming an exercise not yet in the library (including one the
+// athlete typed in by hand) gets resolved the same way as a fresh AI
+// extraction: matched if recognized, or added as a new pending entry.
 router.post('/:id/confirm-extraction', async (req, res) => {
   try {
     const { text } = req.body;
-    const extracted = parseExtractionSummary(text);
+    const raw = parseExtractionSummary(text);
+    const { exercises, library } = await resolveExercisesAgainstLibrary(raw.exercises);
+    const extracted = { exercises };
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    res.json({ extractedExercises: extracted });
+    res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted, library) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to confirm extraction' });

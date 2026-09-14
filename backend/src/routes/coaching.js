@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { generateCoachingFeedback, generateFinalCoachingNote, generateStationScores } from '../services/claude.js';
+import { listLibrary } from '../services/exerciseLibrary.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -155,14 +156,15 @@ router.post('/station-scores', async (req, res) => {
     const session = docToObj(sessionDoc);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const [knowledgeDoc, profileDoc] = await Promise.all([
+    const [knowledgeDoc, profileDoc, library] = await Promise.all([
       collections.knowledge().doc('exercise_transferability').get(),
       collections.profile().doc('main').get(),
+      listLibrary(),
     ]);
     const knowledge = knowledgeDoc.exists ? knowledgeDoc.data().content : null;
     const stationModel = profileDoc.exists ? profileDoc.data().stationModel : null;
 
-    const result = await generateStationScores({ session, knowledge, stationModel });
+    const result = await generateStationScores({ session, knowledge, stationModel, library });
     if (!result) return res.status(502).json({ error: 'Failed to score stations' });
     const { scores: stationScores, equivalence: stationEquivalence } = result;
 

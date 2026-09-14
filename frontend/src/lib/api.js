@@ -115,6 +115,14 @@ export const draftsApi = {
   convert: (date, fields) => api.post(`/api/drafts/${date}/convert`, fields),
 };
 
+export const exerciseLibraryApi = {
+  list: () => api.get('/api/exercise-library'),
+  suggest: (name, notes) => api.post('/api/exercise-library/suggest', { name, notes }),
+  create: (data) => api.post('/api/exercise-library', data),
+  update: (key, data) => api.put(`/api/exercise-library/${key}`, data),
+  delete: (key) => api.delete(`/api/exercise-library/${key}`),
+};
+
 export const stravaApi = {
   getStatus: () => api.get('/api/strava/status'),
   getAuthUrl: () => api.get('/api/strava/auth-url'),

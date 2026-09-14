@@ -27,6 +27,7 @@ export const collections = {
   knowledge:     () => getDb().collection('knowledge'),
   weeklyDigests: () => getDb().collection('weeklyDigests'),
   drafts:        () => getDb().collection('drafts'),
+  exerciseLibrary: () => getDb().collection('exerciseLibrary'),
 };
 
 export function toDate(ts) {

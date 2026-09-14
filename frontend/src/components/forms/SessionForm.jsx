@@ -195,7 +195,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
           <DialogHeader>
             <DialogTitle>Review What Was Extracted</DialogTitle>
             <DialogDescription>
-              This is your log rewritten as one line per exercise, with the total already worked out — e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps total". Fix any line that's wrong (a missed round count, a mislabeled movement) before station scores are computed from it. Keep the exercise name at the start of each line so it's recognized.
+              This is your log rewritten as one line per exercise, with the total already worked out — e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps total". Fix any line that's wrong (a missed round count, a mislabeled movement) before station scores are computed from it. A line tagged <span className="italic">[new — pending review]</span> is an exercise not yet in your Exercise Library — it won't count toward a score until you approve it there.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
