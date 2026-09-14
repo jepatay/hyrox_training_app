@@ -19,30 +19,96 @@ const BUILTIN_EXERCISES = [
   { key: 'rowErg', label: 'Row Erg', aliases: ['rowing', 'row erg', 'rower'], unit: 'm', credits: { row_erg: 1 } },
   { key: 'burpeeBroadJump', label: 'Burpee Broad Jump', aliases: ['burpee broad jump', 'burpee broad jumps', 'bbj'], unit: 'm', credits: { burpee_broad_jump: 1 } },
   { key: 'walkingLunges', label: 'Walking Lunges', aliases: ['walking lunge', 'sandbag lunges', 'lunges'], unit: 'm', credits: { sandbag_lunges: 1 } },
-  { key: 'run', label: 'Run', aliases: ['running'], unit: 'm', credits: { running: 1 } },
+  { key: 'run', label: 'Run', aliases: ['running', 'jog', 'jogging', 'treadmill', 'hill sprints', 'hill sprint', 'stair sprints'], unit: 'm', credits: { running: 1 } },
   { key: 'thruster', label: 'Thruster', aliases: ['thrusters'], unit: 'reps', credits: { wall_balls: 1 } },
   { key: 'squat', label: 'Squat', aliases: ['squats', 'back squat', 'front squat'], unit: 'reps', credits: { wall_balls: 0.35 } },
   { key: 'deadlift', label: 'Deadlift', aliases: ['deadlifts'], unit: 'reps', credits: {} },
   { key: 'benchPress', label: 'Bench Press', aliases: ['bench press', 'bench'], unit: 'reps', credits: {} },
-  { key: 'pullUp', label: 'Pull Up', aliases: ['pull ups', 'pullups', 'pull-ups'], unit: 'reps', credits: {} },
+  { key: 'pullUp', label: 'Pull Up', aliases: ['pull ups', 'pullups', 'pull-ups', 'chin up', 'chin ups'], unit: 'reps', credits: {} },
   {
     key: 'kettlebellSwing', label: 'Kettlebell Swing', aliases: ['kb swing', 'swings', 'side swings', 'kettlebell swings'],
     unit: 'reps', credits: { burpee_broad_jump: 0.4, sandbag_lunges: 0.3 },
     reasoning: 'Explosive hip-hinge drive transfers partially to the broad jump\'s hip extension and general posterior-chain conditioning for lunges.',
   },
   {
-    key: 'assaultBike', label: 'Assault Bike', aliases: ['assault bike', 'air bike', 'airbike', 'fan bike', 'echo bike', 'bike erg'],
+    key: 'assaultBike', label: 'Assault Bike',
+    aliases: ['assault bike', 'air bike', 'airbike', 'fan bike', 'echo bike', 'bike erg', 'spin bike', 'indoor cycling', 'stationary bike', 'cycling'],
     unit: 'cal', metersPerCal: 12, credits: { running: 0.4, skierg: 0.3, row_erg: 0.3 },
     reasoning: 'Full-body cardio machine — real aerobic output, shared across running/ski/row rather than any one station.',
   },
   { key: 'other', label: 'Other', aliases: [], unit: 'reps', credits: {} },
+
+  // Strength staples with no direct HYROX-station transfer — logged for
+  // completeness/trend-tracking, credits left empty rather than guessed.
+  { key: 'romanianDeadlift', label: 'Romanian Deadlift', aliases: ['rdl', 'romanian deadlifts'], unit: 'reps', credits: {} },
+  { key: 'sumoDeadlift', label: 'Sumo Deadlift', aliases: ['sumo deadlifts'], unit: 'reps', credits: {} },
+  { key: 'overheadPress', label: 'Overhead Press', aliases: ['ohp', 'shoulder press', 'military press'], unit: 'reps', credits: {} },
+  { key: 'bentOverRow', label: 'Bent Over Row', aliases: ['barbell row'], unit: 'reps', credits: {} },
+  { key: 'situp', label: 'Sit Up', aliases: ['sit ups', 'crunches', 'crunch'], unit: 'reps', credits: {} },
+  { key: 'russianTwist', label: 'Russian Twist', aliases: ['russian twists'], unit: 'reps', credits: {} },
+  { key: 'legRaise', label: 'Leg Raise', aliases: ['leg raises', 'hanging leg raise'], unit: 'reps', credits: {} },
+  { key: 'plank', label: 'Plank', aliases: ['planks'], unit: 'reps', credits: {} },
+  { key: 'toesToBar', label: 'Toes To Bar', aliases: ['t2b'], unit: 'reps', credits: {} },
+  { key: 'abWheel', label: 'Ab Wheel', aliases: [], unit: 'reps', credits: {} },
+  { key: 'wallSit', label: 'Wall Sit', aliases: [], unit: 'reps', credits: {} },
+  { key: 'dip', label: 'Dip', aliases: ['dips', 'tricep dip'], unit: 'reps', credits: {} },
+  { key: 'handstandPushUp', label: 'Handstand Push Up', aliases: ['hspu'], unit: 'reps', credits: {} },
+
+  // Single-leg / loaded-carry variants — partial transfer to lunges/carry.
+  { key: 'bulgarianSplitSquat', label: 'Bulgarian Split Squat', aliases: ['bss', 'split squat'], unit: 'reps', credits: { sandbag_lunges: 0.3 } },
+  { key: 'stepUp', label: 'Step Up', aliases: ['box step up', 'step ups'], unit: 'reps', credits: { sandbag_lunges: 0.35 } },
+  { key: 'gobletSquat', label: 'Goblet Squat', aliases: ['goblet squats'], unit: 'reps', credits: { wall_balls: 0.25 } },
+  { key: 'suitcaseCarry', label: 'Suitcase Carry', aliases: [], unit: 'm', credits: { farmers_carry: 0.7 } },
+  { key: 'overheadCarry', label: 'Overhead Carry', aliases: ['waiters carry'], unit: 'm', credits: { farmers_carry: 0.5 } },
+  { key: 'sandbagCarry', label: 'Sandbag Carry', aliases: [], unit: 'm', credits: { sandbag_lunges: 0.4, farmers_carry: 0.3 } },
+  { key: 'yokeCarry', label: 'Yoke Carry', aliases: [], unit: 'm', credits: { sled_push: 0.3, farmers_carry: 0.3 } },
+
+  // Explosive/Olympic-lift-family movements — partial credit to wall balls
+  // and/or burpee broad jump for the shared explosive hip/leg drive.
+  { key: 'pushPress', label: 'Push Press', aliases: [], unit: 'reps', credits: { wall_balls: 0.3 } },
+  { key: 'pushJerk', label: 'Push Jerk', aliases: ['jerk'], unit: 'reps', credits: { wall_balls: 0.3 } },
+  { key: 'clean', label: 'Clean', aliases: ['power clean', 'hang clean'], unit: 'reps', credits: { wall_balls: 0.25, burpee_broad_jump: 0.15 } },
+  { key: 'cleanAndJerk', label: 'Clean And Jerk', aliases: ['c&j', 'clean & jerk'], unit: 'reps', credits: { wall_balls: 0.3, burpee_broad_jump: 0.2 } },
+  { key: 'snatch', label: 'Snatch', aliases: ['power snatch', 'hang snatch'], unit: 'reps', credits: { wall_balls: 0.25, burpee_broad_jump: 0.15 } },
+  { key: 'kettlebellClean', label: 'Kettlebell Clean', aliases: ['kb clean'], unit: 'reps', credits: { wall_balls: 0.2 } },
+  { key: 'kettlebellSnatch', label: 'Kettlebell Snatch', aliases: ['kb snatch'], unit: 'reps', credits: { wall_balls: 0.2, burpee_broad_jump: 0.1 } },
+  { key: 'devilsPress', label: "Devil's Press", aliases: ['devils press'], unit: 'reps', credits: { wall_balls: 0.2, burpee_broad_jump: 0.3 } },
+  { key: 'manMaker', label: 'Man Maker', aliases: [], unit: 'reps', credits: { wall_balls: 0.15, burpee_broad_jump: 0.2, farmers_carry: 0.1 } },
+
+  // Plyo / bodyweight conditioning.
+  { key: 'boxJump', label: 'Box Jump', aliases: ['box jumps'], unit: 'reps', credits: { burpee_broad_jump: 0.5 } },
+  { key: 'broadJump', label: 'Broad Jump', aliases: ['standing broad jump'], unit: 'reps', credits: { burpee_broad_jump: 0.7 } },
+  { key: 'tuckJump', label: 'Tuck Jump', aliases: [], unit: 'reps', credits: { burpee_broad_jump: 0.3 } },
+  { key: 'burpee', label: 'Burpee', aliases: ['burpees'], unit: 'reps', credits: { burpee_broad_jump: 0.6 } },
+  { key: 'pushUp', label: 'Push Up', aliases: ['push ups', 'pushups'], unit: 'reps', credits: { burpee_broad_jump: 0.15 } },
+  { key: 'mountainClimbers', label: 'Mountain Climbers', aliases: ['mountain climber'], unit: 'reps', credits: { wall_balls: 0.1 } },
+  { key: 'battleRopes', label: 'Battle Ropes', aliases: ['battle rope'], unit: 'reps', credits: { row_erg: 0.2 } },
+  { key: 'jumpRope', label: 'Jump Rope', aliases: ['skipping', 'double unders'], unit: 'reps', credits: { running: 0.2, skierg: 0.1 } },
+  { key: 'ropeClimb', label: 'Rope Climb', aliases: ['rope climbs'], unit: 'reps', credits: { farmers_carry: 0.2 } },
+
+  // Cardio machines beyond ski/row/bike.
+  {
+    key: 'elliptical', label: 'Elliptical', aliases: [], unit: 'cal', metersPerCal: 8,
+    credits: { running: 0.3, skierg: 0.2, row_erg: 0.2 },
+    reasoning: 'Low-impact full-body cardio — moderate aerobic transfer, split across the cardio stations like the assault bike.',
+  },
+  {
+    key: 'stairClimber', label: 'Stair Climber', aliases: ['stairmaster', 'stair climbing'], unit: 'cal', metersPerCal: 10,
+    credits: { running: 0.4, sandbag_lunges: 0.2 },
+    reasoning: 'Sustained loaded leg-drive cardio — transfers to running endurance and, to a lesser extent, lunge-pattern leg endurance.',
+  },
 ];
 
 async function ensureBuiltinsSeeded() {
-  const snap = await collections.exerciseLibrary().limit(1).get();
-  if (!snap.empty) return;
+  // Checked per-key (not "is the collection empty") so growing this list in
+  // code keeps reaching an already-provisioned database — an "empty means
+  // seed" check would never add anything past the very first deploy.
+  const snap = await collections.exerciseLibrary().get();
+  const existingKeys = new Set(snap.docs.map(d => d.id));
+  const missing = BUILTIN_EXERCISES.filter(e => !existingKeys.has(e.key));
+  if (!missing.length) return;
   const now = admin.firestore.FieldValue.serverTimestamp();
-  await Promise.all(BUILTIN_EXERCISES.map(e => collections.exerciseLibrary().doc(e.key).set({
+  await Promise.all(missing.map(e => collections.exerciseLibrary().doc(e.key).set({
     label: e.label,
     aliases: e.aliases,
     unit: e.unit,
