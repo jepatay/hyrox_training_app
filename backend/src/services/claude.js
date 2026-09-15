@@ -384,9 +384,9 @@ Return:
   "exercises": [
     {
       "name": "<short Title Case name for the movement, e.g. 'Wall Balls', 'Kettlebell Swing', 'Assault Bike', 'Thruster', 'Pull Up'. Use the same consistent name for every mention of the same movement in this response. Do NOT force it into a fixed category — if it's a real, recognizable exercise, name it specifically rather than calling it 'Other'.>",
-      "sets": <number or null>,
-      "reps": <number or null>,
-      "weightKg": <number or null>,
+      "sets": <number or null — ONLY a round/set MULTIPLIER, i.e. how many times the reps value below was repeated (e.g. "3 sets of 8 thrusters" -> sets: 3, reps: 8). If the notes describe just one instance with no round/set language ("8 thrusters"), leave sets null and put the 8 in reps — do NOT put a bare rep count here.>,
+      "reps": <number or null — the rep count itself (per set if sets is also given, otherwise the total, e.g. "8 thrusters" -> reps: 8, sets: null)>,
+      "weightKg": <number or null — ALWAYS convert to kilograms, even when the notes state lbs/pounds (1 lb = 0.4536 kg) — never copy a lbs number in as if it were kg>,
       "distanceM": <number or null>,
       "calories": <number or null — ONLY for a cardio machine reading given in calories, e.g. an assault bike/echo bike/rower display showing "200 cal". Do not fill both calories and distanceM for the same entry.>,
       "notes": "<any other relevant detail or null>"
@@ -436,6 +436,12 @@ export function renderExtractionSummary(extracted, library = []) {
       const setsPrefix = sets ? `${sets} × ` : '';
       const totalSuffix = sets ? ` = ${total}m total` : '';
       return `${label}: ${setsPrefix}${e.distanceM}m${weight}${totalSuffix}${pendingTag}`;
+    }
+    if (e.sets) {
+      // Only "sets" came back with no reps/distance/calories alongside it —
+      // still a real count (e.g. "8 thrusters" landing in the wrong field),
+      // not nothing. Show it as-is rather than claiming it won't count.
+      return `${label}: ${e.sets} reps${weight}${pendingTag}`;
     }
     return `${label}: ${e.notes || 'logged'} (no reps/distance captured — won't count toward station scores)`;
   }).join('\n');
@@ -883,7 +889,11 @@ function computeStationEquivalence(session, benchmarkOverrides, library = []) {
     } else if (e.sets && e.reps) {
       rawVolume = e.sets * e.reps;
     } else {
-      rawVolume = e.reps || 0;
+      // Only one of sets/reps came back populated — that's still a real
+      // count, not zero. A line like "8 thrusters" with no round/set
+      // language can land in either field depending on phrasing; treating
+      // the lone number as "no volume" silently drops the whole entry.
+      rawVolume = e.reps || e.sets || 0;
     }
     if (!rawVolume) continue;
     const isDistanceLike = !!(e.distanceM || e.calories);
