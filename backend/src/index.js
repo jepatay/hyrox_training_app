@@ -18,6 +18,7 @@ import exerciseLibraryRouter from './routes/exerciseLibrary.js';
 import stationReferencesRouter from './routes/stationReferences.js';
 import adminRouter from './routes/admin.js';
 import reprocessRouter from './routes/reprocess.js';
+import dailyTotalsRouter from './routes/dailyTotals.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -46,6 +47,7 @@ app.use('/api/exercise-library', exerciseLibraryRouter);
 app.use('/api/station-references', stationReferencesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/reprocess', reprocessRouter);
+app.use('/api/daily-totals', dailyTotalsRouter);
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

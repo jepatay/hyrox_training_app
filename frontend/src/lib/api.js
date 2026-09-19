@@ -56,6 +56,8 @@ export const sessionsApi = {
   stationTrends: (days) => api.get(`/api/sessions/station-trends${days ? `?days=${days}` : ''}`),
   extract: (id) => api.post(`/api/sessions/${id}/extract`, {}),
   confirmExtraction: (id, text) => api.post(`/api/sessions/${id}/confirm-extraction`, { text }),
+  extractV2: (id) => api.post(`/api/sessions/${id}/extract-v2`, {}),
+  confirmExtractionV2: (id, text) => api.post(`/api/sessions/${id}/confirm-extraction-v2`, { text }),
 };
 
 export const recordsApi = {
@@ -132,6 +134,10 @@ export const stationReferencesApi = {
 
 export const adminApi = {
   exportBackup: () => api.post('/api/admin/export', {}),
+};
+
+export const dailyTotalsApi = {
+  list: (days) => api.get(`/api/daily-totals${days ? `?days=${days}` : ''}`),
 };
 
 export const reprocessApi = {

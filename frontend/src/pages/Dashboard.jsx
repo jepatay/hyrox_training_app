@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/toast';
-import { Mic, Zap, Target, Clock, TrendingUp, Activity, MapPin } from 'lucide-react';
+import { Mic, Target, Clock, TrendingUp, Activity, MapPin } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -89,9 +89,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/suggest')} variant="outline" size="sm" className="gap-1.5">
-            <Zap className="h-3.5 w-3.5" /> Suggest Training
-          </Button>
           <Button onClick={() => navigate('/drafts')} size="sm" className="gap-1.5">
             <Mic className="h-3.5 w-3.5" /> Log Draft
           </Button>

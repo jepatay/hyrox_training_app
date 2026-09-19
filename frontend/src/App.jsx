@@ -3,18 +3,15 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { ToastProvider } from '@/components/ui/toast';
 import Layout from '@/components/Layout';
 import Unauthorized from '@/pages/Unauthorized';
+import Home from '@/pages/Home';
+import LogSession from '@/pages/LogSession';
 import Dashboard from '@/pages/Dashboard';
 import Objectives from '@/pages/Objectives';
 import TrainingLog from '@/pages/TrainingLog';
 import Records from '@/pages/Records';
-import MonthlyReport from '@/pages/MonthlyReport';
-import SuggestionTool from '@/pages/SuggestionTool';
-import Venues from '@/pages/Venues';
 import StravaCallback from '@/pages/StravaCallback';
 import KnowledgeLibrary from '@/pages/KnowledgeLibrary';
 import Drafts from '@/pages/Drafts';
-import Trends from '@/pages/Trends';
-import StationModel from '@/pages/StationModel';
 import ExerciseLibrary from '@/pages/ExerciseLibrary';
 import StationReferences from '@/pages/StationReferences';
 
@@ -39,20 +36,22 @@ function AppContent() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/log" element={<LogSession />} />
         <Route path="/objectives" element={<Objectives />} />
-        <Route path="/training" element={<TrainingLog />} />
         <Route path="/drafts" element={<Drafts />} />
         <Route path="/records" element={<Records />} />
-        <Route path="/report" element={<MonthlyReport />} />
-        <Route path="/suggest" element={<SuggestionTool />} />
-        <Route path="/venues" element={<Venues />} />
         <Route path="/strava/callback" element={<StravaCallback />} />
         <Route path="/knowledge" element={<KnowledgeLibrary />} />
-        <Route path="/trends" element={<Trends />} />
-        <Route path="/station-model" element={<StationModel />} />
         <Route path="/exercise-library" element={<ExerciseLibrary />} />
         <Route path="/station-references" element={<StationReferences />} />
+
+        {/* Change Brief V2 Phase 5: Home (+ the training log list on it) replaces
+            this page's spot in the menu, but nothing here is deleted — kept
+            reachable directly for full session edit/delete until a dedicated
+            replacement exists. Not linked from the sidebar. */}
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/training" element={<TrainingLog />} />
       </Routes>
     </Layout>
   );

@@ -1,24 +1,24 @@
 import { Link, useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, BookOpen, Menu, X, Mic, TrendingUp, SlidersHorizontal, ListChecks, Ruler
-} from 'lucide-react';
+import { Home, Target, Mic, Trophy, BookOpen, Menu, X, ListChecks, Ruler } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
+// Change Brief V2 Phase 5 menu: Trends, Monthly Report, Suggest Training,
+// Venues and the old Station Model nav item (and their routes) are removed;
+// their data stays in Firestore untouched. Exercise Library and Station
+// References nest under Knowledge Library per the design.
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/', label: 'Home', icon: Home },
   { path: '/objectives', label: 'Objectives', icon: Target },
   { path: '/drafts', label: 'Drafts', icon: Mic },
-  { path: '/training', label: 'Training Log', icon: Dumbbell },
-  { path: '/trends', label: 'Trends', icon: TrendingUp },
   { path: '/records', label: 'Records', icon: Trophy },
-  { path: '/report', label: 'Monthly Report', icon: BarChart3 },
-  { path: '/suggest', label: 'Suggest Training', icon: Zap },
-  { path: '/venues', label: 'My Venues', icon: MapPin },
-  { path: '/knowledge', label: 'Knowledge Library', icon: BookOpen },
-  { path: '/station-model', label: 'Station Model', icon: SlidersHorizontal },
-  { path: '/exercise-library', label: 'Exercise Library', icon: ListChecks },
-  { path: '/station-references', label: 'Station References', icon: Ruler },
+  {
+    path: '/knowledge', label: 'Knowledge Library', icon: BookOpen,
+    children: [
+      { path: '/exercise-library', label: 'Exercise Library', icon: ListChecks },
+      { path: '/station-references', label: 'Station References', icon: Ruler },
+    ],
+  },
 ];
 
 export default function Layout({ children }) {
@@ -49,25 +49,9 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ path, label, icon: Icon }) => {
-            const active = location.pathname === path;
-            return (
-              <Link
-                key={path}
-                to={path}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-primary/10 text-primary border border-primary/20'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            );
-          })}
+          {navItems.map(item => (
+            <NavLink key={item.path} item={item} location={location} onNavigate={() => setMobileOpen(false)} />
+          ))}
         </nav>
 
         {/* Footer */}
@@ -102,5 +86,43 @@ export default function Layout({ children }) {
         </main>
       </div>
     </div>
+  );
+}
+
+function NavLink({ item, location, onNavigate }) {
+  const { path, label, icon: Icon, children } = item;
+  const active = location.pathname === path;
+  return (
+    <>
+      <Link
+        to={path}
+        onClick={onNavigate}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+          active
+            ? 'bg-primary/10 text-primary border border-primary/20'
+            : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {label}
+      </Link>
+      {children?.map(child => (
+        <Link
+          key={child.path}
+          to={child.path}
+          onClick={onNavigate}
+          className={cn(
+            'flex items-center gap-3 ml-4 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+            location.pathname === child.path
+              ? 'bg-primary/10 text-primary border border-primary/20'
+              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+          )}
+        >
+          <child.icon className="h-3.5 w-3.5 shrink-0" />
+          {child.label}
+        </Link>
+      ))}
+    </>
   );
 }
