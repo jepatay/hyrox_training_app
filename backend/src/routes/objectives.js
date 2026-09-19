@@ -7,6 +7,20 @@ import admin from 'firebase-admin';
 const router = Router();
 const READINESS_STALE_DAYS = 7;
 
+// Optional per-objective override of the pace scoring.js falls back to
+// Station References for (section 3: "objectives gain optional
+// targetSplits: { run, skierg, row }, pace per 1000m"). Not required —
+// scoring simply uses the Station References default when absent.
+function sanitizeTargetSplits(targetSplits) {
+  if (!targetSplits || typeof targetSplits !== 'object') return null;
+  const out = {};
+  for (const key of ['run', 'skierg', 'row']) {
+    const v = Number(targetSplits[key]);
+    if (Number.isFinite(v) && v > 0) out[key] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function isReadinessStale(objective) {
   if (!objective.readiness?.updatedAt) return true;
   const updatedAt = new Date(objective.readiness.updatedAt);
@@ -98,7 +112,7 @@ router.get('/:id', async (req, res) => {
 // POST create objective
 router.post('/', async (req, res) => {
   try {
-    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets } = req.body;
+    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets, targetSplits } = req.body;
     if (!name || !type || !date || !priority) {
       return res.status(400).json({ error: 'name, type, date, priority are required' });
     }
@@ -112,6 +126,7 @@ router.post('/', async (req, res) => {
       notes: notes || '',
       hyroxDivision: hyroxDivision || null,
       stationTargets: stationTargets || null,
+      targetSplits: sanitizeTargetSplits(targetSplits),
       readiness: null,
       createdAt: now,
       updatedAt: now,
@@ -127,7 +142,7 @@ router.post('/', async (req, res) => {
 // PUT update objective
 router.put('/:id', async (req, res) => {
   try {
-    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets, actualResult } = req.body;
+    const { name, type, date, priority, targetTime, notes, hyroxDivision, stationTargets, actualResult, targetSplits } = req.body;
     await collections.objectives().doc(req.params.id).update({
       ...(name && { name }),
       ...(type && { type }),
@@ -138,6 +153,7 @@ router.put('/:id', async (req, res) => {
       ...(hyroxDivision !== undefined && { hyroxDivision }),
       ...(stationTargets !== undefined && { stationTargets }),
       ...(actualResult !== undefined && { actualResult }),
+      ...(targetSplits !== undefined && { targetSplits: sanitizeTargetSplits(targetSplits) }),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     const updated = docToObj(await collections.objectives().doc(req.params.id).get());

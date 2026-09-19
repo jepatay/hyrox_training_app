@@ -37,6 +37,30 @@ const STATIONS = [
 
 const EMPTY_STATIONS = Object.fromEntries(STATIONS.map(s => [s.key, '']));
 
+// Change Brief V2 section 3: optional per-objective override of the v2
+// scoring engine's target pace for run/skierg/row (Station References'
+// values are the fallback when this is unset). Distinct from stationTargets
+// above, which is a race-day finish-time goal per station, not a training
+// pace the scoring engine reads.
+const PACE_SPLITS = [
+  { key: 'run', label: 'Run' },
+  { key: 'skierg', label: 'SkiErg' },
+  { key: 'row', label: 'Row' },
+];
+function paceLabel(secPerKm) {
+  if (!secPerKm) return '';
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function parsePaceInput(text) {
+  if (!text?.trim()) return null;
+  const m = text.trim().match(/^(\d+):(\d{2})$/);
+  if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const n = Number(text);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export default function ObjectiveForm({ objective, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: objective?.name || '',
@@ -47,6 +71,7 @@ export default function ObjectiveForm({ objective, onClose, onSaved }) {
     notes: objective?.notes || '',
     hyroxDivision: objective?.hyroxDivision || 'open_men',
     stationTargets: objective?.stationTargets || { ...EMPTY_STATIONS },
+    targetSplits: Object.fromEntries(PACE_SPLITS.map(p => [p.key, paceLabel(objective?.targetSplits?.[p.key])])),
   });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -55,6 +80,10 @@ export default function ObjectiveForm({ objective, onClose, onSaved }) {
   const setStation = (k, v) => setForm(prev => ({
     ...prev,
     stationTargets: { ...prev.stationTargets, [k]: v },
+  }));
+  const setSplit = (k, v) => setForm(prev => ({
+    ...prev,
+    targetSplits: { ...prev.targetSplits, [k]: v },
   }));
 
   const isHyrox = form.type === 'hyrox';
@@ -77,6 +106,9 @@ export default function ObjectiveForm({ objective, onClose, onSaved }) {
         notes: form.notes,
         hyroxDivision: isHyrox ? form.hyroxDivision : null,
         stationTargets: isHyrox ? form.stationTargets : null,
+        targetSplits: Object.fromEntries(
+          PACE_SPLITS.map(p => [p.key, parsePaceInput(form.targetSplits[p.key])])
+        ),
       };
       const result = objective
         ? await objectivesApi.update(objective.id, payload)
@@ -172,6 +204,23 @@ export default function ObjectiveForm({ objective, onClose, onSaved }) {
               </div>
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <Label className="text-sm">Target training pace <span className="font-normal text-muted-foreground">(optional, mm:ss per km — overrides Station References for this race)</span></Label>
+            <div className="grid grid-cols-3 gap-2">
+              {PACE_SPLITS.map(p => (
+                <div key={p.key} className="space-y-0.5">
+                  <p className="text-xs font-medium">{p.label}</p>
+                  <Input
+                    placeholder="e.g. 4:30"
+                    value={form.targetSplits[p.key] || ''}
+                    onChange={e => setSplit(p.key, e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="space-y-1.5">
             <Label>Notes</Label>
