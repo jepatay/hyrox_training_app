@@ -1,13 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
-import { exerciseLibraryApi } from '@/lib/api';
+import { exerciseLibraryApi, stationReferencesApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { STATIONS } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search } from 'lucide-react';
+import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search, CheckCheck, X as XIcon } from 'lucide-react';
 
 const STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
+
+// The Core column sits alongside the 9 race-station columns in the table but
+// isn't part of STATIONS (which stays the 9-station shape v1 code elsewhere
+// depends on) — it's the new daily-baseline category from Change Brief V2.
+const CORE_COLUMN = { key: 'core', label: 'Core', icon: '🧱' };
+const ALL_COLUMNS = [...STATIONS, CORE_COLUMN];
+
+// Categories whose reference is a pace, not a load — set on the Station
+// References page (target pace per km), not per exercise. An exercise
+// crediting only these has nothing to put in the Reference column.
+const PACE_STATIONS = new Set(['running', 'skierg', 'row_erg']);
+const WEIGHTED_STATIONS = new Set(['sled_push', 'sled_pull', 'farmers_carry', 'sandbag_lunges', 'wall_balls']);
+
+function isPaceOnly(entry) {
+  const keys = Object.keys(entry.credits || {});
+  if (!keys.length) return false;
+  return keys.some(k => PACE_STATIONS.has(k)) && !keys.some(k => WEIGHTED_STATIONS.has(k));
+}
+
+// For a literal race movement (100% credit to exactly one weighted station,
+// e.g. Wall Balls), the reference load is inherited from Station References
+// rather than set per-exercise — shown as a placeholder so an empty field
+// still reads as "150kg, from the race demand", not "unset".
+function raceDefaultLoadKg(entry, stationReferences) {
+  if (!stationReferences) return null;
+  const weighted = Object.entries(entry.credits || {}).filter(([k, v]) => WEIGHTED_STATIONS.has(k) && v === 1);
+  if (weighted.length !== 1) return null;
+  return stationReferences.categories?.[weighted[0][0]]?.referenceLoadKg ?? null;
+}
 
 // Short column labels so the 9 station columns are identifiable without
 // hovering for a tooltip — the icon alone reads as decoration, not a label.
@@ -21,12 +50,13 @@ const STATION_SHORT_LABEL = {
   sandbag_lunges: 'Lunges',
   burpee_broad_jump: 'BBJ',
   wall_balls: 'W.Ball',
+  core: 'Core',
 };
 
 function blankRow() {
   return {
     key: null, label: '', aliases: [], unit: 'reps', metersPerCal: 10,
-    credits: {}, reasoning: null, status: 'approved', source: 'user', isNew: true,
+    credits: {}, referenceLoadKg: null, reasoning: null, status: 'approved', source: 'user', isNew: true,
   };
 }
 
@@ -41,9 +71,12 @@ export default function ExerciseLibrary() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [newRow, setNewRow] = useState(blankRow());
+  const [stationReferences, setStationReferences] = useState(null);
+  const [selectedPending, setSelectedPending] = useState(new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); stationReferencesApi.get().then(setStationReferences).catch(() => {}); }, []);
 
   async function load() {
     setLoading(true);
@@ -93,6 +126,12 @@ export default function ExerciseLibrary() {
   function handleCreditBlur(entry) {
     persist(entry.key, { credits: entry.credits });
   }
+  function handleReferenceLoadChange(entry, value) {
+    updateLocal(entry.key, { referenceLoadKg: value === '' ? null : value });
+  }
+  function handleReferenceLoadBlur(entry) {
+    persist(entry.key, { referenceLoadKg: entry.referenceLoadKg === '' ? null : Number(entry.referenceLoadKg) || null });
+  }
 
   async function handleSuggest(entry) {
     if (!entry.label.trim()) return;
@@ -103,6 +142,7 @@ export default function ExerciseLibrary() {
         unit: suggestion.unit || 'reps',
         metersPerCal: suggestion.metersPerCal || 10,
         credits: suggestion.credits || {},
+        referenceLoadKg: suggestion.referenceLoadKg ?? null,
         reasoning: suggestion.reasoning || null,
       };
       if (entry.key) {
@@ -141,6 +181,7 @@ export default function ExerciseLibrary() {
         unit: newRow.unit,
         metersPerCal: newRow.metersPerCal,
         credits: newRow.credits,
+        referenceLoadKg: newRow.referenceLoadKg,
         reasoning: newRow.reasoning,
       });
       setLibrary(prev => [...prev, created].sort((a, b) => a.label.localeCompare(b.label)));
@@ -167,6 +208,30 @@ export default function ExerciseLibrary() {
     }
   }
 
+  function togglePendingSelection(key) {
+    setSelectedPending(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  async function handleBulkStatus(status) {
+    const keys = [...selectedPending];
+    if (!keys.length) return;
+    setBulkWorking(true);
+    try {
+      await exerciseLibraryApi.bulkStatus(keys, status);
+      setLibrary(prev => prev.map(e => keys.includes(e.key) ? { ...e, status } : e));
+      setSelectedPending(new Set());
+      toast({ title: status === 'approved' ? 'Approved' : 'Rejected', description: `${keys.length} exercise(s) ${status}.` });
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
   const filtered = useMemo(() => {
     return library.filter(e => {
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
@@ -188,13 +253,48 @@ export default function ExerciseLibrary() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-5 w-5" /> Exercise Library</h1>
           <p className="text-muted-foreground text-sm max-w-2xl">
-            Every movement the app recognizes, and exactly how much it counts toward each of the 9 HYROX stations. Type directly into any cell — it saves as you go. A "pending" row won't count toward a score until you set it to approved.
+            Every movement the app recognizes, and exactly how much it counts toward each of the 9 HYROX stations plus Core. Type directly into any cell — it saves as you go. A "pending" row won't count toward a score until you set it to approved.
           </p>
         </div>
         <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={handleScan} disabled={scanning}>
           <ScanSearch className="h-3.5 w-3.5" /> {scanning ? 'Scanning...' : 'Scan Past Sessions'}
         </Button>
       </div>
+
+      {pendingCount > 0 && (
+        <div className="border border-orange-400/30 bg-orange-400/5 rounded-lg p-3 flex items-center justify-between flex-wrap gap-3">
+          <div className="text-sm">
+            <span className="font-medium text-orange-400">{pendingCount} exercise{pendingCount === 1 ? '' : 's'} pending review.</span>{' '}
+            <span className="text-muted-foreground">Filter to "Pending" below, select rows, then approve or reject in bulk.</span>
+          </div>
+          {statusFilter === 'pending' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{selectedPending.size} selected</span>
+              <Button
+                size="sm" variant="outline" className="gap-1.5 h-7 text-xs"
+                disabled={!selectedPending.size || bulkWorking}
+                onClick={() => setSelectedPending(new Set(filtered.map(e => e.key)))}
+              >
+                Select all
+              </Button>
+              <Button
+                size="sm" className="gap-1.5 h-7 text-xs"
+                disabled={!selectedPending.size || bulkWorking}
+                onClick={() => handleBulkStatus('approved')}
+              >
+                <CheckCheck className="h-3.5 w-3.5" /> Approve selected
+              </Button>
+              <Button
+                size="sm" variant="outline" className="gap-1.5 h-7 text-xs text-muted-foreground"
+                disabled={!selectedPending.size || bulkWorking}
+                onClick={() => handleBulkStatus('rejected')}
+              >
+                <XIcon className="h-3.5 w-3.5" /> Reject selected
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative w-64">
@@ -220,9 +320,10 @@ export default function ExerciseLibrary() {
         <table className="w-full text-sm min-w-[1180px]">
           <thead>
             <tr className="text-left text-[10px] text-muted-foreground uppercase tracking-wide bg-secondary/40">
+              {statusFilter === 'pending' && <th className="font-medium py-2 px-2 w-8"></th>}
               <th className="font-medium py-2 px-2 min-w-[160px]">Name</th>
               <th className="font-medium py-2 px-2 min-w-[100px]">Unit</th>
-              {STATIONS.map(s => (
+              {ALL_COLUMNS.map(s => (
                 <th key={s.key} className="font-medium py-2 px-1 w-16 text-center" title={s.label}>
                   <div className="flex flex-col items-center gap-0.5">
                     <span className="text-sm">{s.icon}</span>
@@ -230,6 +331,7 @@ export default function ExerciseLibrary() {
                   </div>
                 </th>
               ))}
+              <th className="font-medium py-2 px-2 min-w-[100px]">Reference</th>
               <th className="font-medium py-2 px-2 min-w-[110px]">Status</th>
               <th className="font-medium py-2 px-2 w-10"></th>
             </tr>
@@ -237,6 +339,15 @@ export default function ExerciseLibrary() {
           <tbody>
             {filtered.map(entry => (
               <tr key={entry.key} className="border-t border-border/50 hover:bg-secondary/20">
+                {statusFilter === 'pending' && (
+                  <td className="p-1 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedPending.has(entry.key)}
+                      onChange={() => togglePendingSelection(entry.key)}
+                    />
+                  </td>
+                )}
                 <td className="p-1">
                   <Input
                     className="h-8 text-xs border-transparent bg-transparent hover:border-border focus:border-border"
@@ -252,6 +363,7 @@ export default function ExerciseLibrary() {
                       <SelectContent>
                         <SelectItem value="reps">reps</SelectItem>
                         <SelectItem value="m">m</SelectItem>
+                        <SelectItem value="km">km</SelectItem>
                         <SelectItem value="cal">cal</SelectItem>
                       </SelectContent>
                     </Select>
@@ -266,7 +378,7 @@ export default function ExerciseLibrary() {
                     )}
                   </div>
                 </td>
-                {STATIONS.map(s => (
+                {ALL_COLUMNS.map(s => (
                   <td key={s.key} className="p-1">
                     <Input
                       type="number" min="0" max="100"
@@ -278,6 +390,20 @@ export default function ExerciseLibrary() {
                     />
                   </td>
                 ))}
+                <td className="p-1">
+                  {isPaceOnly(entry) ? (
+                    <span className="text-xs text-muted-foreground px-1" title="Set on the Station References page">Target pace</span>
+                  ) : (
+                    <Input
+                      type="number" min="0" step="0.5"
+                      className="h-8 w-16 text-xs px-1 border-transparent bg-transparent hover:border-border focus:border-border"
+                      value={entry.referenceLoadKg ?? ''}
+                      onChange={e => handleReferenceLoadChange(entry, e.target.value)}
+                      onBlur={() => handleReferenceLoadBlur(entry)}
+                      placeholder={(() => { const d = raceDefaultLoadKg(entry, stationReferences); return d ? `${d} (race)` : 'kg'; })()}
+                    />
+                  )}
+                </td>
                 <td className="p-1">
                   <Select value={entry.status} onValueChange={v => handleStatusChange(entry, v)}>
                     <SelectTrigger className={`h-8 text-xs border-transparent bg-transparent hover:border-border ${
@@ -303,6 +429,7 @@ export default function ExerciseLibrary() {
 
             {/* Always-visible add row */}
             <tr className="border-t border-border bg-secondary/20">
+              {statusFilter === 'pending' && <td className="p-1"></td>}
               <td className="p-1">
                 <Input
                   className="h-8 text-xs" placeholder="New exercise name..."
@@ -317,6 +444,7 @@ export default function ExerciseLibrary() {
                     <SelectContent>
                       <SelectItem value="reps">reps</SelectItem>
                       <SelectItem value="m">m</SelectItem>
+                      <SelectItem value="km">km</SelectItem>
                       <SelectItem value="cal">cal</SelectItem>
                     </SelectContent>
                   </Select>
@@ -325,7 +453,7 @@ export default function ExerciseLibrary() {
                   )}
                 </div>
               </td>
-              {STATIONS.map(s => (
+              {ALL_COLUMNS.map(s => (
                 <td key={s.key} className="p-1">
                   <Input
                     type="number" min="0" max="100" className="h-8 w-14 text-xs px-1 text-center"
@@ -342,6 +470,18 @@ export default function ExerciseLibrary() {
                   />
                 </td>
               ))}
+              <td className="p-1">
+                {isPaceOnly(newRow) ? (
+                  <span className="text-xs text-muted-foreground px-1">Target pace</span>
+                ) : (
+                  <Input
+                    type="number" min="0" step="0.5" className="h-8 w-16 text-xs px-1"
+                    value={newRow.referenceLoadKg ?? ''}
+                    onChange={e => setNewRow(prev => ({ ...prev, referenceLoadKg: e.target.value === '' ? null : e.target.value }))}
+                    placeholder="kg"
+                  />
+                )}
+              </td>
               <td className="p-1 text-xs text-muted-foreground">new</td>
               <td className="p-1">
                 <div className="flex items-center">

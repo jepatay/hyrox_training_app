@@ -508,21 +508,23 @@ export async function suggestExerciseStationCredits({ name, notes }) {
 The 9 HYROX stations and their race demand:
 ${renderStationBenchmarks()}
 
-Decide how much this exercise should count toward each station, as a weight from 0 to 1 (1 = fully equivalent to doing that station itself, 0 = no meaningful transfer). Only include stations with genuine transfer — omit the rest rather than listing them at 0. Most exercises meaningfully transfer to at most 1-3 stations; only give a plain literal match (e.g. "Sled Push") a weight of 1.
+Decide how much this exercise should count toward each station, as a weight from 0 to 1 (1 = fully equivalent to doing that station itself, 0 = no meaningful transfer). Only include stations with genuine transfer — omit the rest rather than listing them at 0. Most exercises meaningfully transfer to at most 1-3 stations; only give a plain literal match (e.g. "Sled Push") a weight of 1. "core" is not a race station — it's a daily-baseline category (100 reps = 1.0) for ab/core work (sit-ups, planks, leg raises, etc.); give it a weight there instead of guessing a race-station transfer for pure core movements.
 
 Also decide:
-- "unit": "reps", "m" (distance-based), or "cal" (a cardio machine reading given in calories)
+- "unit": "reps", "m" (distance-based), "km" (long-distance running), or "cal" (a cardio machine reading given in calories)
 - if unit is "cal", "metersPerCal": a reasonable meters-per-calorie conversion for that specific machine (e.g. ~10-15 for an assault/air bike, ~15-20 for a rower)
+- "referenceLoadKg": only if this exercise is normally done against an external load (barbell, dumbbell, kettlebell, sandbag, sled, etc.) AND it's credited toward a weighted station (sled_push, sled_pull, farmers_carry, sandbag_lunges, wall_balls) — a reasonable reference load in kg for an average athlete at that movement, used to scale the credit up or down from actual logged load. null otherwise (bodyweight moves, cardio, no weighted-station credit).
 
 Return JSON only:
 {
-  "unit": "<reps|m|cal>",
+  "unit": "<reps|m|km|cal>",
   "metersPerCal": <number or null>,
   "credits": { "<stationKey>": <0-1>, ... },
+  "referenceLoadKg": <number or null>,
   "reasoning": "<one sentence explaining the transfer logic>"
 }
 
-Valid station keys: running, skierg, sled_push, sled_pull, row_erg, farmers_carry, sandbag_lunges, burpee_broad_jump, wall_balls.`;
+Valid station keys: running, skierg, sled_push, sled_pull, row_erg, farmers_carry, sandbag_lunges, burpee_broad_jump, wall_balls, core.`;
   return chatJson(prompt, 400);
 }
 

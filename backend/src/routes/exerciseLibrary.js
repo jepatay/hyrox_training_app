@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import admin from 'firebase-admin';
 import { collections } from '../services/firebase.js';
-import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits } from '../services/exerciseLibrary.js';
+import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits, sanitizeUnit, sanitizeReferenceLoadKg } from '../services/exerciseLibrary.js';
 import { suggestExerciseStationCredits } from '../services/claude.js';
 
 const router = Router();
@@ -27,10 +27,12 @@ router.post('/suggest', async (req, res) => {
     if (!name?.trim()) return res.status(400).json({ error: 'name required' });
     const suggestion = await suggestExerciseStationCredits({ name, notes });
     if (!suggestion) return res.status(502).json({ error: 'Failed to get a suggestion' });
+    const unit = sanitizeUnit(suggestion.unit);
     res.json({
-      unit: suggestion.unit === 'cal' || suggestion.unit === 'm' ? suggestion.unit : 'reps',
-      metersPerCal: suggestion.unit === 'cal' ? (Number(suggestion.metersPerCal) || 10) : null,
+      unit,
+      metersPerCal: unit === 'cal' ? (Number(suggestion.metersPerCal) || 10) : null,
       credits: sanitizeCredits(suggestion.credits),
+      referenceLoadKg: sanitizeReferenceLoadKg(suggestion.referenceLoadKg),
       reasoning: suggestion.reasoning || null,
     });
   } catch (err) {
@@ -68,7 +70,7 @@ router.post('/backfill', async (_req, res) => {
 // found in a note.
 router.post('/', async (req, res) => {
   try {
-    const { label, aliases, unit, metersPerCal, credits, reasoning } = req.body;
+    const { label, aliases, unit, metersPerCal, credits, referenceLoadKg, reasoning } = req.body;
     if (!label?.trim()) return res.status(400).json({ error: 'label required' });
 
     const library = await listLibrary();
@@ -78,12 +80,14 @@ router.post('/', async (req, res) => {
     while (existingKeys.has(key)) key = `${base}${i++}`;
 
     const now = admin.firestore.FieldValue.serverTimestamp();
+    const sanitizedUnit = sanitizeUnit(unit);
     const entry = {
       label: label.trim(),
       aliases: Array.isArray(aliases) ? aliases.filter(a => a?.trim()) : [],
-      unit: unit === 'cal' || unit === 'm' ? unit : 'reps',
-      metersPerCal: unit === 'cal' ? (Number(metersPerCal) || 10) : null,
+      unit: sanitizedUnit,
+      metersPerCal: sanitizedUnit === 'cal' ? (Number(metersPerCal) || 10) : null,
       credits: sanitizeCredits(credits),
+      referenceLoadKg: sanitizeReferenceLoadKg(referenceLoadKg),
       reasoning: reasoning || null,
       status: 'approved',
       source: 'user',
@@ -98,18 +102,36 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT bulk status change — the pending-review view's "Approve selected" /
+// "Reject selected" actions, so clearing out a scan's worth of new pending
+// exercises doesn't take one round trip per row.
+router.put('/bulk-status', async (req, res) => {
+  try {
+    const { keys, status } = req.body;
+    if (!Array.isArray(keys) || !keys.length) return res.status(400).json({ error: 'keys required' });
+    if (!['pending', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'invalid status' });
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await Promise.all(keys.map(key => collections.exerciseLibrary().doc(key).update({ status, updatedAt: now })));
+    res.json({ updated: keys.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to bulk-update exercises' });
+  }
+});
+
 // PUT edit an entry — also how a pending suggestion gets approved (status:
 // 'approved') or rejected (status: 'rejected', excluded from scoring like
 // pending, but no longer shown as needing review).
 router.put('/:key', async (req, res) => {
   try {
-    const { label, aliases, unit, metersPerCal, credits, status, reasoning } = req.body;
+    const { label, aliases, unit, metersPerCal, credits, referenceLoadKg, status, reasoning } = req.body;
     const updates = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     if (label !== undefined) updates.label = label;
     if (aliases !== undefined) updates.aliases = Array.isArray(aliases) ? aliases.filter(a => a?.trim()) : [];
-    if (unit !== undefined) updates.unit = unit;
+    if (unit !== undefined) updates.unit = sanitizeUnit(unit);
     if (metersPerCal !== undefined) updates.metersPerCal = metersPerCal;
     if (credits !== undefined) updates.credits = sanitizeCredits(credits);
+    if (referenceLoadKg !== undefined) updates.referenceLoadKg = sanitizeReferenceLoadKg(referenceLoadKg);
     if (status !== undefined) updates.status = status;
     if (reasoning !== undefined) updates.reasoning = reasoning;
 

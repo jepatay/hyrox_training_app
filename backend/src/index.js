@@ -15,6 +15,8 @@ import stravaRouter from './routes/strava.js';
 import knowledgeRouter from './routes/knowledge.js';
 import draftsRouter from './routes/drafts.js';
 import exerciseLibraryRouter from './routes/exerciseLibrary.js';
+import stationReferencesRouter from './routes/stationReferences.js';
+import adminRouter from './routes/admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,6 +42,8 @@ app.use('/api/strava', stravaRouter);
 app.use('/api/knowledge', knowledgeRouter);
 app.use('/api/drafts', draftsRouter);
 app.use('/api/exercise-library', exerciseLibraryRouter);
+app.use('/api/station-references', stationReferencesRouter);
+app.use('/api/admin', adminRouter);
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

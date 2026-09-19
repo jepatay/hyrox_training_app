@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, BookOpen, Menu, X, Mic, TrendingUp, SlidersHorizontal, ListChecks
+  LayoutDashboard, Target, Dumbbell, Trophy, BarChart3, Zap, MapPin, BookOpen, Menu, X, Mic, TrendingUp, SlidersHorizontal, ListChecks, Ruler
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ const navItems = [
   { path: '/knowledge', label: 'Knowledge Library', icon: BookOpen },
   { path: '/station-model', label: 'Station Model', icon: SlidersHorizontal },
   { path: '/exercise-library', label: 'Exercise Library', icon: ListChecks },
+  { path: '/station-references', label: 'Station References', icon: Ruler },
 ];
 
 export default function Layout({ children }) {

@@ -16,6 +16,7 @@ import Drafts from '@/pages/Drafts';
 import Trends from '@/pages/Trends';
 import StationModel from '@/pages/StationModel';
 import ExerciseLibrary from '@/pages/ExerciseLibrary';
+import StationReferences from '@/pages/StationReferences';
 
 function AppContent() {
   const { isAuthorized, isLoading } = useAuth();
@@ -51,6 +52,7 @@ function AppContent() {
         <Route path="/trends" element={<Trends />} />
         <Route path="/station-model" element={<StationModel />} />
         <Route path="/exercise-library" element={<ExerciseLibrary />} />
+        <Route path="/station-references" element={<StationReferences />} />
       </Routes>
     </Layout>
   );

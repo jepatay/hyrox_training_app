@@ -14,13 +14,17 @@ const BUILTIN_EXERCISES = [
   { key: 'sledPush', label: 'Sled Push', aliases: ['sled push'], unit: 'm', credits: { sled_push: 1 } },
   { key: 'sledPull', label: 'Sled Pull', aliases: ['sled pull'], unit: 'm', credits: { sled_pull: 1 } },
   { key: 'farmersCarry', label: 'Farmers Carry', aliases: ['farmers carry', 'farmer carry', 'farmers walk'], unit: 'm', credits: { farmers_carry: 1 } },
-  { key: 'wallBalls', label: 'Wall Balls', aliases: ['wall ball', 'wallballs', 'wall balls'], unit: 'reps', credits: { wall_balls: 1 } },
+  { key: 'wallBalls', label: 'Wall Balls', aliases: ['wall ball', 'wallballs', 'wall balls'], unit: 'reps', credits: { wall_balls: 1 }, referenceLoadKg: 6 },
   { key: 'skiErg', label: 'Ski Erg', aliases: ['skierg', 'ski erg'], unit: 'm', credits: { skierg: 1 } },
   { key: 'rowErg', label: 'Row Erg', aliases: ['rowing', 'row erg', 'rower'], unit: 'm', credits: { row_erg: 1 } },
   { key: 'burpeeBroadJump', label: 'Burpee Broad Jump', aliases: ['burpee broad jump', 'burpee broad jumps', 'bbj'], unit: 'm', credits: { burpee_broad_jump: 1 } },
   { key: 'walkingLunges', label: 'Walking Lunges', aliases: ['walking lunge', 'sandbag lunges', 'lunges'], unit: 'm', credits: { sandbag_lunges: 1 } },
   { key: 'run', label: 'Run', aliases: ['running', 'jog', 'jogging', 'treadmill', 'hill sprints', 'hill sprint', 'stair sprints'], unit: 'm', credits: { running: 1 } },
-  { key: 'thruster', label: 'Thruster', aliases: ['thrusters'], unit: 'reps', credits: { wall_balls: 1 } },
+  {
+    key: 'thruster', label: 'Thruster', aliases: ['thrusters'], unit: 'reps',
+    credits: { wall_balls: 0.4, sled_push: 0.2 }, referenceLoadKg: 20,
+    reasoning: 'Squat-to-overhead drive shares the wall ball\'s leg-hip-arm chain and, at heavier loads, the sled push\'s leg drive under load. Placeholder reference load, confirm.',
+  },
   { key: 'squat', label: 'Squat', aliases: ['squats', 'back squat', 'front squat'], unit: 'reps', credits: { wall_balls: 0.35 } },
   { key: 'deadlift', label: 'Deadlift', aliases: ['deadlifts'], unit: 'reps', credits: {} },
   { key: 'benchPress', label: 'Bench Press', aliases: ['bench press', 'bench'], unit: 'reps', credits: {} },
@@ -33,7 +37,7 @@ const BUILTIN_EXERCISES = [
   {
     key: 'assaultBike', label: 'Assault Bike',
     aliases: ['assault bike', 'air bike', 'airbike', 'fan bike', 'echo bike', 'bike erg', 'spin bike', 'indoor cycling', 'stationary bike', 'cycling'],
-    unit: 'cal', metersPerCal: 12, credits: { running: 0.4, skierg: 0.3, row_erg: 0.3 },
+    unit: 'cal', metersPerCal: 12, credits: { running: 0.3, skierg: 0.5, row_erg: 0.4 },
     reasoning: 'Full-body cardio machine — real aerobic output, shared across running/ski/row rather than any one station.',
   },
   { key: 'other', label: 'Other', aliases: [], unit: 'reps', credits: {} },
@@ -44,7 +48,7 @@ const BUILTIN_EXERCISES = [
   { key: 'sumoDeadlift', label: 'Sumo Deadlift', aliases: ['sumo deadlifts'], unit: 'reps', credits: {} },
   { key: 'overheadPress', label: 'Overhead Press', aliases: ['ohp', 'shoulder press', 'military press'], unit: 'reps', credits: {} },
   { key: 'bentOverRow', label: 'Bent Over Row', aliases: ['barbell row'], unit: 'reps', credits: {} },
-  { key: 'situp', label: 'Sit Up', aliases: ['sit ups', 'crunches', 'crunch'], unit: 'reps', credits: {} },
+  { key: 'situp', label: 'Sit Up', aliases: ['sit ups', 'crunches', 'crunch'], unit: 'reps', credits: { core: 1 } },
   { key: 'russianTwist', label: 'Russian Twist', aliases: ['russian twists'], unit: 'reps', credits: {} },
   { key: 'legRaise', label: 'Leg Raise', aliases: ['leg raises', 'hanging leg raise'], unit: 'reps', credits: {} },
   { key: 'plank', label: 'Plank', aliases: ['planks'], unit: 'reps', credits: {} },
@@ -80,7 +84,7 @@ const BUILTIN_EXERCISES = [
   { key: 'broadJump', label: 'Broad Jump', aliases: ['standing broad jump'], unit: 'reps', credits: { burpee_broad_jump: 0.7 } },
   { key: 'tuckJump', label: 'Tuck Jump', aliases: [], unit: 'reps', credits: { burpee_broad_jump: 0.3 } },
   { key: 'burpee', label: 'Burpee', aliases: ['burpees'], unit: 'reps', credits: { burpee_broad_jump: 0.6 } },
-  { key: 'pushUp', label: 'Push Up', aliases: ['push ups', 'pushups'], unit: 'reps', credits: { burpee_broad_jump: 0.15 } },
+  { key: 'pushUp', label: 'Push Up', aliases: ['push ups', 'pushups'], unit: 'reps', credits: { core: 0.3 } },
   { key: 'mountainClimbers', label: 'Mountain Climbers', aliases: ['mountain climber'], unit: 'reps', credits: { wall_balls: 0.1 } },
   { key: 'battleRopes', label: 'Battle Ropes', aliases: ['battle rope'], unit: 'reps', credits: { row_erg: 0.2 } },
   { key: 'jumpRope', label: 'Jump Rope', aliases: ['skipping', 'double unders'], unit: 'reps', credits: { running: 0.2, skierg: 0.1 } },
@@ -114,6 +118,7 @@ async function ensureBuiltinsSeeded() {
     unit: e.unit,
     metersPerCal: e.metersPerCal ?? null,
     credits: e.credits,
+    referenceLoadKg: e.referenceLoadKg ?? null,
     reasoning: e.reasoning || null,
     status: 'approved',
     source: 'builtin',
@@ -122,8 +127,38 @@ async function ensureBuiltinsSeeded() {
   })));
 }
 
+// Change Brief V2 section 9 Phase 1(c) corrects 5 already-seeded builtins'
+// credits/reference loads (Sit Up and Push Up now credit `core` instead of
+// nothing/burpee_broad_jump, Thruster and Echo Bike's credit split changes to
+// match the worked examples in section 2.6, Wall Balls gets its reference
+// load). ensureBuiltinsSeeded only fills in docs that don't exist yet, so on
+// a database that already has these 5 from before this design existed, the
+// old values would otherwise never update. This applies the correction once
+// per doc (flagged `creditsV2: true`) so it never overwrites an athlete's own
+// edit made after the correction has already landed.
+const CREDITS_V2_CORRECTIONS = ['situp', 'pushUp', 'thruster', 'wallBalls', 'assaultBike'];
+
+async function applyCreditsV2Corrections() {
+  const keys = CREDITS_V2_CORRECTIONS;
+  const docs = await Promise.all(keys.map(k => collections.exerciseLibrary().doc(k).get()));
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await Promise.all(docs.map((doc, i) => {
+    if (!doc.exists || doc.data().creditsV2 === true) return null;
+    const builtin = BUILTIN_EXERCISES.find(e => e.key === keys[i]);
+    if (!builtin) return null;
+    return doc.ref.update({
+      credits: builtin.credits,
+      referenceLoadKg: builtin.referenceLoadKg ?? null,
+      reasoning: builtin.reasoning || null,
+      creditsV2: true,
+      updatedAt: now,
+    });
+  }));
+}
+
 export async function listLibrary() {
   await ensureBuiltinsSeeded();
+  await applyCreditsV2Corrections();
   const snap = await collections.exerciseLibrary().orderBy('label').get();
   return snap.docs.map(d => ({ key: d.id, ...d.data() }));
 }
@@ -159,11 +194,31 @@ function titleCase(name) {
   return name.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// Clamps to valid station keys and a 0-1 weight — defensive against a
-// malformed AI response or a hand-typed credit value.
+// The 9 race stations plus `core` (Change Brief V2 section 2.1) — `core`
+// isn't a race station, so it's kept out of STATION_KEYS (which still drives
+// the v1 AI station-score prompt and fallback in claude.js) and added only
+// where a credit map itself is read or written.
+export const CREDIT_KEYS = [...STATION_KEYS, 'core'];
+
+const VALID_UNITS = ['reps', 'm', 'km', 'cal'];
+
+export function sanitizeUnit(unit) {
+  return VALID_UNITS.includes(unit) ? unit : 'reps';
+}
+
+// A load-bearing exercise's own reference load (kg) — used by the v2 scoring
+// load factor. null means "no load factor for this exercise" (bodyweight,
+// cardio, or not yet set), never a guessed number.
+export function sanitizeReferenceLoadKg(value) {
+  const v = Number(value);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+// Clamps to valid credit keys (9 stations + core) and a 0-1 weight —
+// defensive against a malformed AI response or a hand-typed credit value.
 export function sanitizeCredits(credits) {
   const out = {};
-  for (const key of STATION_KEYS) {
+  for (const key of CREDIT_KEYS) {
     const v = Number(credits?.[key]);
     if (Number.isFinite(v) && v > 0) out[key] = Math.min(1, v);
   }
@@ -173,13 +228,14 @@ export function sanitizeCredits(credits) {
 async function createPendingEntry(name, notes, library) {
   const key = uniqueSlug(name, library);
   const suggestion = await suggestExerciseStationCredits({ name, notes }).catch(() => null);
-  const unit = suggestion?.unit === 'cal' || suggestion?.unit === 'm' ? suggestion.unit : 'reps';
+  const unit = sanitizeUnit(suggestion?.unit);
   const entry = {
     label: titleCase(name),
     aliases: [],
     unit,
     metersPerCal: unit === 'cal' ? (Number(suggestion?.metersPerCal) || 10) : null,
     credits: sanitizeCredits(suggestion?.credits),
+    referenceLoadKg: sanitizeReferenceLoadKg(suggestion?.referenceLoadKg),
     reasoning: suggestion?.reasoning || null,
     status: 'pending',
     source: 'ai_suggested',

@@ -28,6 +28,7 @@ export const collections = {
   weeklyDigests: () => getDb().collection('weeklyDigests'),
   drafts:        () => getDb().collection('drafts'),
   exerciseLibrary: () => getDb().collection('exerciseLibrary'),
+  stationReferences: () => getDb().collection('stationReferences'),
 };
 
 export function toDate(ts) {

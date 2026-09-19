@@ -122,6 +122,15 @@ export const exerciseLibraryApi = {
   update: (key, data) => api.put(`/api/exercise-library/${key}`, data),
   delete: (key) => api.delete(`/api/exercise-library/${key}`),
   backfill: () => api.post('/api/exercise-library/backfill', {}),
+  bulkStatus: (keys, status) => api.put('/api/exercise-library/bulk-status', { keys, status }),
+};
+
+export const stationReferencesApi = {
+  get: () => api.get('/api/station-references'),
+};
+
+export const adminApi = {
+  exportBackup: () => api.post('/api/admin/export', {}),
 };
 
 export const stravaApi = {
