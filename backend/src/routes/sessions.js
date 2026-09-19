@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
-import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary } from '../services/claude.js';
+import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, extractExercisesFromNotesV2, renderExtractionSummaryV2, parseExtractionSummaryV2, ensureRunLines } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
 import admin from 'firebase-admin';
 
@@ -159,6 +159,74 @@ router.post('/:id/confirm-extraction', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to confirm extraction' });
+  }
+});
+
+// POST run v2 extraction (Change Brief V2 Phase 3) for a session and cache it
+// on `extractionV2` — separate from the v1 `extractedExercises` field above,
+// which is untouched and keeps feeding v1 scoring. Every part of the session
+// (warm-up, runs, abs, cool-down) is extracted, and a running session whose
+// extraction found no run line gets one filled in from Strava lap/split text
+// already in the notes, or from `runningDistance` as a last resort.
+router.post('/:id/extract-v2', async (req, res) => {
+  try {
+    const doc = await collections.sessions().doc(req.params.id).get();
+    const session = docToObj(doc);
+    if (!session) return res.status(404).json({ error: 'Not found' });
+    if (!session.notes?.trim() && !session.runningDistance) {
+      return res.json({ extractionV2: null, summaryText: '' });
+    }
+
+    const raw = session.notes?.trim()
+      ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
+      : { lines: [] };
+    // Filtered before resolving so `lines` and `resolvedLines` stay
+    // index-aligned — resolveExercisesAgainstLibrary silently drops any
+    // entry with no name.
+    const lines = ensureRunLines(raw?.lines, session).filter(l => l.exercise);
+    const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
+      lines.map(l => ({ ...l, name: l.exercise }))
+    );
+    // resolveExercisesAgainstLibrary works off `name` (v1 field name) but
+    // stamps `libraryKey` back on — carry that onto the v2 line shape
+    // without losing any v1 field it might also read.
+    const finalLines = lines.map((l, i) => ({ ...l, libraryKey: resolvedLines[i]?.libraryKey }));
+    const library = await listLibrary();
+
+    const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
+    await collections.sessions().doc(req.params.id).update({
+      extractionV2,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ extractionV2, summaryText: renderExtractionSummaryV2(extractionV2, library) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to run v2 extraction' });
+  }
+});
+
+// POST re-parse a hand-edited v2 review text back into extractionV2 lines.
+// Deterministic regex parsing (parseExtractionSummaryV2), not another AI call.
+router.post('/:id/confirm-extraction-v2', async (req, res) => {
+  try {
+    const { text } = req.body;
+    const raw = parseExtractionSummaryV2(text);
+    const lines = raw.lines.filter(l => l.exercise);
+    const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
+      lines.map(l => ({ ...l, name: l.exercise }))
+    );
+    const finalLines = lines.map((l, i) => ({ ...l, libraryKey: resolvedLines[i]?.libraryKey }));
+    const library = await listLibrary();
+
+    const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
+    await collections.sessions().doc(req.params.id).update({
+      extractionV2,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ extractionV2, summaryText: renderExtractionSummaryV2(extractionV2, library) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to confirm v2 extraction' });
   }
 });
 

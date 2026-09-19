@@ -497,6 +497,236 @@ export function parseExtractionSummary(text) {
   return { exercises };
 }
 
+// v2 extraction (Change Brief V2 section 4) — separate from the v1 functions
+// above, which stay untouched and keep feeding v1 scoring. Differences:
+// every part of the session counts (warm-up, runs, abs, cool-down — nothing
+// skipped), each line carries a `part` tag, and lines gain `timeSec` (the
+// time for one interval, never a computed pace — that's scoring.js's job)
+// alongside the existing weight/distance/calories fields. Cached as-is on
+// the session's `extractionV2` field; re-scoring never re-calls this.
+export async function extractExercisesFromNotesV2({ type, notes }) {
+  if (!notes?.trim()) return null;
+  const prompt = `Extract EVERY logged movement from this training session note — including warm-up, cool-down, ab/core work and any runs, wherever they appear in the text. Nothing gets skipped because it looks like a warm-up or an afterthought. Return JSON only.
+
+Session type: ${type}
+Notes: "${notes.trim().slice(0, 4000)}"
+
+Return:
+{
+  "lines": [
+    {
+      "part": "<warmup|main|finisher|core|cooldown — which section of the session this belongs to. 'warmup' = explicit warm-up work before the main effort. 'finisher' = extra work explicitly after/following the main block (e.g. under a 'Then' or 'Finisher' label). 'core' = ab/core-specific work (sit-ups, planks, leg raises, etc.), wherever it appears. 'cooldown' = explicit cool-down/stretching-adjacent movement (rare). Otherwise 'main'.>",
+      "exercise": "<short Title Case name for the movement, e.g. 'Wall Balls', 'Run', 'Sit Up'. Use the same consistent name for every mention of the same movement.>",
+      "intervals": <number — how many times this exact effort was repeated (e.g. "3 rounds of 20 wall balls" -> intervals: 3, reps: 20 per round; "10 x 200m ski repeats" -> intervals: 10, distanceM: 200 per repeat). 1 if it happened once. Apply the same round-counting rule as always: if a block of movements visibly repeats in the text (numbered rounds, or the same block appearing back-to-back) without saying so explicitly, count the repeats yourself.>,
+      "reps": <number or null — the PER-INTERVAL rep count (not multiplied by intervals)>,
+      "distanceM": <number or null — the PER-INTERVAL distance in meters (not multiplied by intervals)>,
+      "calories": <number or null — the PER-INTERVAL calories for a cardio machine reading (assault bike/echo bike/rower), not multiplied by intervals>,
+      "weightKg": <number or null — ALWAYS convert to kilograms (1 lb = 0.4536 kg)>,
+      "timeSec": <number or null — the time taken for ONE interval, in seconds, ONLY if the notes state a time or pace for it (e.g. "200m in 32 seconds" -> timeSec: 32; "5km in 25:00" -> timeSec: 1500). Never compute or estimate a time/pace yourself — leave null if the notes don't state one.>,
+      "notes": "<any other relevant detail or null>"
+    }
+  ]
+}
+
+Only include what is explicitly mentioned. Return empty lines array if nothing structured is mentioned.
+
+ROUND-COUNTING — apply the same rule regardless of section: COUNT how many times a block of movements actually appears (explicit count, numbered rounds, or repeated back-to-back blocks with no count stated) and reflect it in "intervals" with the PER-INTERVAL numbers, never a pre-multiplied total. If a movement's weight changes partway through repeated blocks, output SEPARATE lines per weight bracket.`;
+  return chatJson(prompt, 1400);
+}
+
+const V2_PART_ORDER = ['warmup', 'main', 'finisher', 'core', 'cooldown'];
+const V2_PART_LABEL = { warmup: 'Warm-up', main: 'Main', finisher: 'Then', core: 'Core', cooldown: 'Cool-down' };
+const V2_HEADER_TO_PART = { 'warm-up': 'warmup', main: 'main', then: 'finisher', core: 'core', 'cool-down': 'cooldown' };
+
+function formatMinSec(totalSec) {
+  const m = Math.floor(totalSec / 60);
+  const s = Math.round(totalSec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatV2Line(line, entry) {
+  const label = entry?.label || line.exercise || 'Exercise';
+  const pendingTag = entry?.status === 'pending' ? ' [new — pending review in Exercise Library]' : '';
+  const n = line.intervals && line.intervals > 1 ? line.intervals : null;
+  const prefix = n ? `${n} × ` : '';
+  const modifier = line.weightKg ? ` @ ${line.weightKg} kg` : line.timeSec ? ` @ ${formatMinSec(line.timeSec)}` : '';
+
+  if (line.calories) {
+    const total = (n || 1) * line.calories;
+    const totalSuffix = n ? ` = ${total.toLocaleString()} cal` : '';
+    return `${label}: ${prefix}${line.calories} cal${modifier}${totalSuffix}${pendingTag}`;
+  }
+  if (line.reps) {
+    const total = (n || 1) * line.reps;
+    const totalSuffix = n ? ` = ${total.toLocaleString()} reps` : '';
+    return `${label}: ${prefix}${line.reps} reps${modifier}${totalSuffix}${pendingTag}`;
+  }
+  if (line.distanceM) {
+    const total = (n || 1) * line.distanceM;
+    const totalSuffix = n ? ` = ${total.toLocaleString()} m` : '';
+    return `${label}: ${prefix}${line.distanceM} m${modifier}${totalSuffix}${pendingTag}`;
+  }
+  return `${label}: ${line.notes || 'logged'} (no reps/distance/calories captured — won't count toward a score)${pendingTag}`;
+}
+
+// Renders extractionV2 lines as plain text grouped under section headers
+// (Warm-up / Main / Then / Core / Cool-down), each line spelling out its
+// interval count, load-or-pace modifier and total — e.g.
+// "Ski: 10 × 200 m @ 0:32 = 2,000 m" — exactly what parseExtractionSummaryV2
+// reads back, so what the athlete edits IS what gets scored.
+export function renderExtractionSummaryV2(extractionV2, library = []) {
+  const lines = extractionV2?.lines || [];
+  if (!lines.length) return '';
+  const byKey = new Map(library.map(e => [e.key, e]));
+  const byPart = new Map(V2_PART_ORDER.map(p => [p, []]));
+  for (const line of lines) {
+    (byPart.get(line.part) || byPart.get('main')).push(line);
+  }
+
+  const blocks = [];
+  for (const part of V2_PART_ORDER) {
+    const partLines = byPart.get(part);
+    if (!partLines.length) continue;
+    // A round count in the header (e.g. "Main (3 rounds)") is just a label a
+    // person might type — it isn't derived from any line's own interval
+    // count (a "10 x 200m" ski block inside a "3 rounds" class isn't itself
+    // done 3 times), so it's never synthesized here; parsing strips whatever
+    // free text follows the section name regardless.
+    const header = V2_PART_LABEL[part];
+    const body = partLines.map(l => {
+      const entry = l.libraryKey ? byKey.get(l.libraryKey) : null;
+      return formatV2Line(l, entry);
+    }).join('\n');
+    blocks.push(`${header}\n${body}`);
+  }
+  return blocks.join('\n');
+}
+
+// Deterministic regex parser — the inverse of renderExtractionSummaryV2, so
+// a hand-edited review text flows back into the same line shape extraction
+// produces. No AI call.
+export function parseExtractionSummaryV2(text) {
+  const rawLines = (text || '').split('\n').map(l => l.trim());
+  const lines = [];
+  let currentPart = 'main';
+
+  for (const raw of rawLines) {
+    if (!raw) continue;
+    if (!raw.includes(':')) {
+      const headerMatch = raw.match(/^(warm-up|main|then|core|cool-down)\b/i);
+      if (headerMatch) {
+        currentPart = V2_HEADER_TO_PART[headerMatch[1].toLowerCase()];
+        continue;
+      }
+    }
+
+    const colonIdx = raw.indexOf(':');
+    if (colonIdx === -1) continue;
+    const exercise = raw.slice(0, colonIdx).trim();
+    if (!exercise) continue;
+    let rest = raw.slice(colonIdx + 1).trim();
+    rest = rest.replace(/\s*\[new[^\]]*\]\s*$/i, '').trim();
+    rest = rest.replace(/\s*=\s*[\d,.]+\s*(reps|m|cal)\s*$/i, '').trim();
+
+    let intervals = 1;
+    const intervalsMatch = rest.match(/^(\d+)\s*[×x]\s*/i);
+    if (intervalsMatch) {
+      intervals = parseInt(intervalsMatch[1], 10);
+      rest = rest.slice(intervalsMatch[0].length);
+    }
+
+    let weightKg = null;
+    const weightMatch = rest.match(/@\s*([\d.]+)\s*kg/i);
+    if (weightMatch) {
+      weightKg = parseFloat(weightMatch[1]);
+      rest = rest.replace(weightMatch[0], '').trim();
+    }
+
+    let timeSec = null;
+    const paceMatch = rest.match(/@\s*(\d+):(\d{2})\b/);
+    if (paceMatch) {
+      timeSec = parseInt(paceMatch[1], 10) * 60 + parseInt(paceMatch[2], 10);
+      rest = rest.replace(paceMatch[0], '').trim();
+    }
+
+    let reps = null, distanceM = null, calories = null;
+    const calMatch = rest.match(/^([\d.]+)\s*cal/i);
+    const repsMatch = rest.match(/^([\d.]+)\s*reps/i);
+    const distMatch = rest.match(/^([\d.]+)\s*m\b/i);
+    if (calMatch) calories = parseFloat(calMatch[1]);
+    else if (repsMatch) reps = parseFloat(repsMatch[1]);
+    else if (distMatch) distanceM = parseFloat(distMatch[1]);
+
+    if (!reps && !distanceM && !calories) continue;
+    lines.push({ part: currentPart, exercise, intervals, reps, distanceM, calories, weightKg, timeSec, notes: null });
+  }
+  return { lines };
+}
+
+// Fallback lines for a run/Strava-imported session whose extraction found no
+// run line — built from data that's already on the session rather than
+// guessed. Strava lap/split detail arrives as plain text in `notes` (see
+// strava.js's activity-detail renderer), so that's parsed first for
+// per-lap distance+time (each lap keeping its own pace, per section 2.4);
+// only when that's absent too does this fall back to one line from the
+// session's total `runningDistance` (and `duration`, if logged), which
+// carries no pace and scores at a neutral factor.
+export function parseStravaLapsFromNotes(notes) {
+  if (!notes) return [];
+  const lines = notes.split('\n');
+
+  const lapHeaderIdx = lines.findIndex(l => /^Laps \(\d+\):/i.test(l.trim()));
+  if (lapHeaderIdx !== -1) {
+    const laps = [];
+    for (let i = lapHeaderIdx + 1; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*Lap\s+\d+:\s*([\d.]+)\s*m.*?\((\d+):(\d{2})\)/i);
+      if (!m) break;
+      laps.push({
+        part: 'main', exercise: 'Run', intervals: 1,
+        distanceM: parseFloat(m[1]), timeSec: parseInt(m[2], 10) * 60 + parseInt(m[3], 10),
+      });
+    }
+    if (laps.length) return laps;
+  }
+
+  const splitHeaderIdx = lines.findIndex(l => /^Km splits:/i.test(l.trim()));
+  if (splitHeaderIdx !== -1) {
+    const splits = [];
+    for (let i = splitHeaderIdx + 1; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*km\s+\d+:\s*(\d+):(\d{2})\/km/i);
+      if (!m) break;
+      splits.push({
+        part: 'main', exercise: 'Run', intervals: 1,
+        distanceM: 1000, timeSec: parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
+      });
+    }
+    if (splits.length) return splits;
+  }
+
+  return [];
+}
+
+// Adds a run line to extractionV2 lines when a running session's extraction
+// didn't find one — never overwrites a run the extraction DID find (which
+// may carry better per-interval pace data than a lap/split text parse would).
+export function ensureRunLines(lines, session) {
+  const hasRun = (lines || []).some(l => /run/i.test(l.exercise || ''));
+  if (hasRun || session?.type !== 'running') return lines || [];
+
+  const fromLaps = parseStravaLapsFromNotes(session.notes);
+  if (fromLaps.length) return [...(lines || []), ...fromLaps];
+
+  if (session?.runningDistance) {
+    return [...(lines || []), {
+      part: 'main', exercise: 'Run', intervals: 1,
+      distanceM: session.runningDistance * 1000,
+      timeSec: session.duration ? session.duration * 60 : null,
+      notes: 'from runningDistance, no per-interval pace',
+    }];
+  }
+  return lines || [];
+}
+
 // Asks the model how a not-yet-recognized exercise should count toward the 9
 // HYROX stations — used only to seed a new library entry, which starts
 // 'pending' and excluded from scoring until the athlete reviews and approves
