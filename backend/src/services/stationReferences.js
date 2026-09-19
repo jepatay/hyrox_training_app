@@ -46,3 +46,46 @@ export async function getStationReferences() {
     limits: { ...DEFAULTS.limits, ...(saved.limits || {}) },
   };
 }
+
+const CATEGORY_KEYS = Object.keys(DEFAULTS.categories);
+
+function sanitizeCategoryPatch(patch) {
+  if (!patch || typeof patch !== 'object') return {};
+  const out = {};
+  if (patch.raceQty !== undefined) { const v = Number(patch.raceQty); if (Number.isFinite(v) && v > 0) out.raceQty = v; }
+  if (patch.referenceLoadKg !== undefined) { const v = Number(patch.referenceLoadKg); out.referenceLoadKg = Number.isFinite(v) && v > 0 ? v : null; }
+  if (patch.targetPaceSecPerKm !== undefined) { const v = Number(patch.targetPaceSecPerKm); out.targetPaceSecPerKm = Number.isFinite(v) && v > 0 ? v : null; }
+  return out;
+}
+
+function sanitizeLimits(limits) {
+  if (!limits || typeof limits !== 'object') return {};
+  const out = {};
+  for (const key of ['loadCap', 'paceCap', 'floor', 'warmupWeight']) {
+    if (limits[key] === undefined) continue;
+    const v = Number(limits[key]);
+    if (Number.isFinite(v) && v > 0) out[key] = v;
+  }
+  return out;
+}
+
+// Merge-updates categories/limits — only fields explicitly present in the
+// patch are touched, so editing one category's reference load never
+// clobbers another's, and the athlete's own edits never get reset back to
+// the hardcoded defaults on a later read.
+export async function updateStationReferences({ categories, limits } = {}) {
+  const current = await getStationReferences();
+  const nextCategories = { ...current.categories };
+  for (const key of CATEGORY_KEYS) {
+    if (categories?.[key]) nextCategories[key] = { ...nextCategories[key], ...sanitizeCategoryPatch(categories[key]) };
+  }
+  const nextLimits = { ...current.limits, ...sanitizeLimits(limits) };
+
+  await collections.stationReferences().doc(DOC_ID).set({
+    categories: nextCategories,
+    limits: nextLimits,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { categories: nextCategories, limits: nextLimits };
+}

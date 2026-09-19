@@ -29,6 +29,7 @@ export const collections = {
   drafts:        () => getDb().collection('drafts'),
   exerciseLibrary: () => getDb().collection('exerciseLibrary'),
   stationReferences: () => getDb().collection('stationReferences'),
+  dailyTotals: () => getDb().collection('dailyTotals'),
 };
 
 export function toDate(ts) {

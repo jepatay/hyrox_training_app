@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreSession } from './scoring.js';
+import { scoreSession, linesFromExtractionV2 } from './scoring.js';
 
 // Fixture library/references, independent of Firestore and the real seeded
 // builtins (scoring.js is pure — these tests only need shapes that match the
@@ -166,4 +166,21 @@ test('pace factor is capped and floored', () => {
   assert.equal(round3(fast.re.skierg), 2.0);
   const slow = scoreSession([{ exerciseKey: 'skiErg', qty: 1000, distanceM: 1000, timeSec: 1200 }], LIBRARY, REFERENCES); // 1200s/km, target 240 -> 0.2x floored to 0.25x
   assert.equal(round3(slow.re.skierg), 0.25);
+});
+
+test('linesFromExtractionV2: T5 ski example round-trips through the extractionV2 shape', () => {
+  // Raw extractionV2 line as the AI/parser would produce it: PER-INTERVAL
+  // numbers plus an intervals count, not a pre-multiplied total.
+  const extractionLines = [{ libraryKey: 'skiErg', part: 'main', intervals: 10, distanceM: 200, timeSec: 32 }];
+  const scoringLines = linesFromExtractionV2(extractionLines, LIBRARY);
+  assert.equal(scoringLines[0].distanceM, 2000);
+  assert.equal(scoringLines[0].timeSec, 320);
+  const s = scoreSession(scoringLines, LIBRARY, REFERENCES);
+  assert.equal(round3(s.re.skierg), 3.0);
+});
+
+test('linesFromExtractionV2: a line with no libraryKey scores as needs_library', () => {
+  const scoringLines = linesFromExtractionV2([{ part: 'main', intervals: 1, reps: 10 }], LIBRARY);
+  const s = scoreSession(scoringLines, LIBRARY, REFERENCES);
+  assert.ok(s.lines[0].flags.includes('needs_library'));
 });

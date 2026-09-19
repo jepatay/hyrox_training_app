@@ -3,6 +3,7 @@ import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
 import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, extractExercisesFromNotesV2, renderExtractionSummaryV2, parseExtractionSummaryV2, ensureRunLines } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
+import { recomputeDailyTotal } from '../services/dailyTotals.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -10,6 +11,9 @@ const router = Router();
 async function runBackgroundJobs(session, { notesChanged = false, isEdit = false } = {}) {
   if (!session?.date) return;
   await rebuildWeekDigest(session.date);
+  // dailyTotals is always recomputed from scratch, never incremented — safe
+  // to call unconditionally even before this session has a `v2` yet.
+  await recomputeDailyTotal(session.date);
 
   // Extract structured exercise data from notes and store back on the session.
   // Re-run whenever notes changed so stale extraction never lingers after an edit.
@@ -301,6 +305,11 @@ router.put('/:id', async (req, res) => {
 
     // Background: rebuild weekly digest, re-extract exercises and refresh station scores if notes changed
     runBackgroundJobs(updated, { notesChanged, isEdit: true }).catch(err => console.error('Background jobs failed (update):', err));
+    // If the date itself moved, the old date's total no longer includes this
+    // session — runBackgroundJobs above only recomputes the new date.
+    if (before?.date && updated?.date && before.date !== updated.date) {
+      recomputeDailyTotal(before.date).catch(err => console.error('dailyTotals recompute failed (old date):', err));
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update session' });
@@ -311,8 +320,10 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const doc = await collections.sessions().doc(req.params.id).get();
+    let date = null;
     if (doc.exists) {
       const data = doc.data();
+      date = data.date || null;
       // If this was a Strava-synced session, add its activity ID to the blocklist
       // so it never gets re-imported on future syncs
       if (data.stravaActivityId) {
@@ -323,6 +334,9 @@ router.delete('/:id', async (req, res) => {
     }
     await collections.sessions().doc(req.params.id).delete();
     res.json({ success: true });
+
+    // Background: that day's total no longer includes this session.
+    if (date) recomputeDailyTotal(date).catch(err => console.error('dailyTotals recompute failed (delete):', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to delete session' });

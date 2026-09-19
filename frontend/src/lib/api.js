@@ -127,10 +127,20 @@ export const exerciseLibraryApi = {
 
 export const stationReferencesApi = {
   get: () => api.get('/api/station-references'),
+  update: (data) => api.put('/api/station-references', data),
 };
 
 export const adminApi = {
   exportBackup: () => api.post('/api/admin/export', {}),
+};
+
+export const reprocessApi = {
+  dryRun: () => api.get('/api/reprocess/dry-run'),
+  extract: (opts) => api.post('/api/reprocess/extract', opts || {}),
+  score: (opts) => api.post('/api/reprocess/score', opts || {}),
+  rebuildDailyTotals: () => api.post('/api/reprocess/rebuild-daily-totals', {}),
+  report: () => api.get('/api/reprocess/report'),
+  rescoreSession: (id) => api.post(`/api/reprocess/sessions/${id}/rescore`, {}),
 };
 
 export const stravaApi = {

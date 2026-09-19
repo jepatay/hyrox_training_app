@@ -136,3 +136,29 @@ export function scoreSession(lines, library, references, objective) {
   const sessionLoadRE = CATEGORY_KEYS.reduce((sum, k) => sum + re[k], 0);
   return { lines: scoredLines, re, sessionLoadRE };
 }
+
+// Bridges an extractionV2 line (raw AI/parser output — `reps`/`distanceM`/
+// `calories` given PER interval, plus `intervals`) into the flat, already-
+// totaled shape scoreSession expects. This is the one place "sum repeated
+// blocks" happens for v2, same idea as v1's sets×reps multiplication.
+// Requires each line to already carry a `libraryKey` (resolved via
+// resolveExercisesAgainstLibrary) — a line with none scores as `needs_library`.
+export function linesFromExtractionV2(extractionLines, library) {
+  const byKey = new Map((library || []).map(e => [e.key, e]));
+  return (extractionLines || []).map(l => {
+    const exercise = l.libraryKey ? byKey.get(l.libraryKey) : null;
+    const unit = exercise?.unit || 'reps';
+    const n = l.intervals || 1;
+    const distanceM = l.distanceM != null ? l.distanceM * n : undefined;
+    const calories = l.calories != null ? l.calories * n : undefined;
+    const reps = l.reps != null ? l.reps * n : undefined;
+    const timeSec = l.timeSec != null ? l.timeSec * n : undefined;
+    const qty = unit === 'cal' ? calories : (unit === 'm' || unit === 'km') ? distanceM : reps;
+
+    return {
+      exerciseKey: l.libraryKey,
+      qty, weightKg: l.weightKg ?? undefined, distanceM, calories, timeSec,
+      part: l.part,
+    };
+  });
+}
