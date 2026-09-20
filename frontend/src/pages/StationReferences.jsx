@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { adminApi, stationReferencesApi, reprocessApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,6 +51,8 @@ export default function StationReferences() {
   const [dryRun, setDryRun] = useState(null);
   const [dryRunning, setDryRunning] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState(null);
+  const extractStopRef = useRef(false);
   const [scoring, setScoring] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [report, setReport] = useState(null);
@@ -122,20 +124,39 @@ export default function StationReferences() {
     }
   }
 
+  // Loops the batched endpoint itself instead of making the athlete click
+  // once per 20 sessions — a full history can be several hundred sessions,
+  // each an LLM call, so this keeps batching (never one giant request) but
+  // drives it to completion automatically, refreshing the dry-run count
+  // after every batch so progress is visible as it goes.
   async function handleExtract() {
     setExtracting(true);
+    extractStopRef.current = false;
+    let totalProcessed = 0;
+    let totalErrors = [];
     try {
-      const result = await reprocessApi.extract({ limit: 20 });
+      while (!extractStopRef.current) {
+        const result = await reprocessApi.extract({ limit: 20 });
+        totalProcessed += result.processed;
+        totalErrors = totalErrors.concat(result.errors);
+        setExtractProgress({ processed: totalProcessed, remaining: result.remaining, errors: totalErrors.length });
+        handleDryRun();
+        if (result.remaining <= 0 || result.processed === 0) break;
+      }
       toast({
-        title: 'Extraction batch done',
-        description: `${result.processed} session(s) extracted, ${result.remaining} remaining, ${result.errors.length} error(s). Run again to continue.`,
+        title: extractStopRef.current ? 'Extraction stopped' : 'Extraction complete',
+        description: `${totalProcessed} session(s) extracted total, ${totalErrors.length} error(s).`,
       });
-      handleDryRun();
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setExtracting(false);
+      setExtractProgress(null);
     }
+  }
+
+  function handleStopExtract() {
+    extractStopRef.current = true;
   }
 
   async function handleScore() {
@@ -300,7 +321,7 @@ export default function StationReferences() {
         <CardHeader><CardTitle className="text-base">Reprocess all</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Section 8's flow: dry run for counts, an extraction pass (LLM, slow — run it in batches), a scoring pass (pure, instant), then rebuild every day's total. Nothing existing is ever deleted or overwritten — old fields stay untouched, and re-running any step is safe.
+            Section 8's flow: dry run for counts, an extraction pass (LLM, slow — batches itself through your whole history, newest sessions first, click Stop to pause), a scoring pass (pure, instant), then rebuild every day's total. Nothing existing is ever deleted or overwritten — old fields stay untouched, and re-running any step is safe.
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -308,8 +329,15 @@ export default function StationReferences() {
               <RefreshCw className="h-3.5 w-3.5" /> {dryRunning ? 'Running...' : '1. Dry run'}
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={handleExtract} disabled={extracting || !dryRun}>
-              {extracting ? 'Extracting...' : '2. Extraction pass (batch of 20)'}
+              {extracting
+                ? `Extracting... ${extractProgress ? `${extractProgress.processed} done, ${extractProgress.remaining} left` : ''}`
+                : '2. Extraction pass (runs to completion)'}
             </Button>
+            {extracting && (
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={handleStopExtract}>
+                Stop
+              </Button>
+            )}
             <Button size="sm" variant="outline" className="gap-1.5" onClick={handleScore} disabled={scoring || !dryRun}>
               {scoring ? 'Scoring...' : '3. Scoring pass (all pending)'}
             </Button>

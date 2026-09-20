@@ -20,8 +20,12 @@ async function getActiveObjective() {
   return objectives.find(o => o.date >= today) || null;
 }
 
+// Newest first — the extraction pass is batched (20 at a time), and Home
+// only ever shows the most recent sessions, so without this ordering a
+// batch could spend clicks working through old history while the sessions
+// actually visible on Home stayed untouched.
 async function allSessions() {
-  const snap = await collections.sessions().get();
+  const snap = await collections.sessions().orderBy('date', 'desc').get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
