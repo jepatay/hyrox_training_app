@@ -164,7 +164,6 @@ export default function LogSession() {
               placeholder={'Warm-up: 500 m row\nClass, 3 rounds:\n20 wall balls 9 kg\n10 push-ups\nrun 1 km\n...'}
               className="flex-grow box-border p-4 border-2 border-[#F3F1EB] rounded-xl bg-transparent text-[#F3F1EB] text-lg leading-relaxed resize-none min-h-[280px]"
             />
-            <div className="text-[13px] leading-snug text-[#A6A49C]">Warm-ups, runs and abs all count. Nothing is skipped.</div>
           </div>
           <button
             onClick={handleWriteSubmit} disabled={busy}
