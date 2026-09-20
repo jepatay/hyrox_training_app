@@ -29,14 +29,11 @@ function isoDaysAgo(n) {
 
 function sumWindow(dailyTotals, fromStr, toStr) {
   const totals = Object.fromEntries(STATION_BOXES.map(b => [b.key, 0]));
-  let coreReps = 0, coreRE = 0;
   for (const d of dailyTotals) {
     if (d.date < fromStr || d.date > toStr) continue;
     for (const b of STATION_BOXES) totals[b.key] += d.re?.[b.key] || 0;
-    coreReps += d.coreReps || 0;
-    coreRE += d.re?.core || 0;
   }
-  return { totals, coreReps, coreRE };
+  return { totals };
 }
 
 function trendLabel(current, previous) {
@@ -48,9 +45,16 @@ function trendLabel(current, previous) {
   return { pct: 0, text: '0%' };
 }
 
+const WINDOW_OPTIONS = [15, 30, 60, 90];
+const DAILY_CHART_DAYS = 60;
+
+function dailyReTotal(d) {
+  return Object.values(d?.re || {}).reduce((sum, v) => sum + (v || 0), 0);
+}
+
 export default function Home() {
   const navigate = useNavigate();
-  const [windowDays, setWindowDays] = useState(15);
+  const [windowDays, setWindowDays] = useState(30);
   const [dailyTotals, setDailyTotals] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -61,8 +65,11 @@ export default function Home() {
   async function load() {
     setLoading(true);
     try {
+      // 2x the largest window option, so the trend % (this window vs the
+      // previous window of the same length) always has enough history —
+      // 90d's previous period reaches back 180 days.
       const [totals, sessionList, draftList] = await Promise.all([
-        dailyTotalsApi.list(60),
+        dailyTotalsApi.list(Math.max(...WINDOW_OPTIONS) * 2),
         sessionsApi.list({ limit: 20 }),
         draftsApi.list('open'),
       ]);
@@ -76,26 +83,29 @@ export default function Home() {
     }
   }
 
-  const { current, previous, dayStrip } = useMemo(() => {
+  const { current, previous } = useMemo(() => {
     const todayStr = isoDaysAgo(0);
     const curFrom = isoDaysAgo(windowDays - 1);
     const prevTo = isoDaysAgo(windowDays);
     const prevFrom = isoDaysAgo(windowDays * 2 - 1);
 
-    const cur = sumWindow(dailyTotals, curFrom, todayStr);
-    const prev = sumWindow(dailyTotals, prevFrom, prevTo);
-
-    const byDate = new Map(dailyTotals.map(d => [d.date, d]));
-    const strip = [];
-    for (let i = windowDays - 1; i >= 0; i--) {
-      const date = isoDaysAgo(i);
-      strip.push({ date, hit: (byDate.get(date)?.coreReps || 0) >= 100 });
-    }
-    return { current: cur, previous: prev, dayStrip: strip };
+    return {
+      current: sumWindow(dailyTotals, curFrom, todayStr),
+      previous: sumWindow(dailyTotals, prevFrom, prevTo),
+    };
   }, [dailyTotals, windowDays]);
 
+  const dailySeries = useMemo(() => {
+    const byDate = new Map(dailyTotals.map(d => [d.date, d]));
+    const series = [];
+    for (let i = DAILY_CHART_DAYS - 1; i >= 0; i--) {
+      const date = isoDaysAgo(i);
+      series.push({ date, re: dailyReTotal(byDate.get(date)) });
+    }
+    return series;
+  }, [dailyTotals]);
+
   const maxStationRE = Math.max(0.01, ...STATION_BOXES.map(b => current.totals[b.key]));
-  const daysAt100 = dayStrip.filter(d => d.hit).length;
 
   const feed = useMemo(() => {
     const sessionItems = sessions.map(s => ({ kind: 'session', date: s.date, session: s }));
@@ -114,11 +124,11 @@ export default function Home() {
           <h1 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-4xl leading-none">Last {windowDays} days</h1>
         </div>
         <div className="flex gap-1.5">
-          {[15, 30].map(d => (
+          {WINDOW_OPTIONS.map(d => (
             <button
               key={d}
               onClick={() => setWindowDays(d)}
-              className={`min-h-[44px] min-w-[52px] rounded-full border-2 border-[#F3F1EB] font-['Barlow_Condensed',sans-serif] font-semibold text-[17px] ${
+              className={`min-h-[44px] min-w-[44px] px-2 rounded-full border-2 border-[#F3F1EB] font-['Barlow_Condensed',sans-serif] font-semibold text-[17px] ${
                 windowDays === d ? 'bg-[#26292D] text-[#0E0F11]' : 'bg-transparent text-[#F3F1EB]'
               }`}
             >
@@ -153,20 +163,7 @@ export default function Home() {
 
           <p className="text-xs leading-snug text-[#A6A49C]">Bar = share of your most-trained station. 1.0 RE = one full race of that station.</p>
 
-          <div className="bg-[#1A1C1F] rounded-xl px-3.5 py-3 flex flex-col gap-2.5">
-            <div className="flex justify-between items-baseline">
-              <div className="font-['Barlow_Condensed',sans-serif] font-semibold text-[15px] tracking-wide uppercase text-[#A6A49C]">Core</div>
-              <div className="text-[13px] text-[#A6A49C]">{daysAt100} of {windowDays} days at 100+ reps</div>
-            </div>
-            <div className="font-['Barlow_Condensed',sans-serif] font-bold text-[34px] leading-none">
-              {current.coreReps.toLocaleString()}<span className="text-[13px] font-semibold text-[#A6A49C] ml-1.5">reps · {current.coreRE.toFixed(1)} RE</span>
-            </div>
-            <div role="img" aria-label={`${daysAt100} of the last ${windowDays} days had 100 or more core reps`} className="flex gap-1">
-              {dayStrip.map(d => (
-                <div key={d.date} className={`flex-grow h-3.5 rounded-sm ${d.hit ? 'bg-[#F5C400]' : 'bg-[#33373B]'}`} />
-              ))}
-            </div>
-          </div>
+          <DailyReChart series={dailySeries} />
 
           <div className="flex gap-2.5">
             <button
@@ -203,6 +200,69 @@ export default function Home() {
       )}
     </div>
   );
+}
+
+// Simple, single-series bar chart: one bar per day, height = that day's
+// total RE across every category, 0 for a rest day (no fake floor value —
+// an empty slot in the row already reads as "didn't train"). No legend
+// needed for a single series (dataviz skill) — the card title names it.
+// Every bar is hoverable via a full-height invisible hit rect behind it
+// (interaction.md: hit target bigger than the mark), including 0-height
+// days, so a rest day is still confirmable on hover, not just inferred
+// from a gap.
+function DailyReChart({ series }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const maxRE = Math.max(0.1, ...series.map(d => d.re));
+  const chartHeight = 70;
+  const n = series.length;
+  const slot = 100 / n;
+  const gap = Math.min(1, slot * 0.15);
+  const barWidth = Math.max(slot - gap, 0.2);
+  const active = series[hoverIdx ?? series.length - 1];
+  const activeLabel = hoverIdx != null ? formatShortDate(active.date) : 'Today';
+
+  return (
+    <div className="bg-[#1A1C1F] rounded-xl px-3.5 py-3 flex flex-col gap-2">
+      <div className="flex justify-between items-baseline">
+        <div className="font-['Barlow_Condensed',sans-serif] font-semibold text-[15px] tracking-wide uppercase text-[#A6A49C]">Daily load — last {n} days</div>
+        <div className="text-right whitespace-nowrap">
+          <span className="font-['Barlow_Condensed',sans-serif] font-bold text-lg">{active.re.toFixed(2)}</span>
+          <span className="text-xs font-semibold text-[#A6A49C] ml-1">RE · {activeLabel}</span>
+        </div>
+      </div>
+      <svg
+        viewBox={`0 0 100 ${chartHeight}`} preserveAspectRatio="none" className="w-full h-20"
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <line x1="0" y1={chartHeight - 0.3} x2="100" y2={chartHeight - 0.3} stroke="#33373B" strokeWidth="0.5" />
+        {series.map((d, i) => {
+          const h = maxRE > 0 ? (d.re / maxRE) * (chartHeight - 2) : 0;
+          const x = i * slot;
+          const isHover = hoverIdx === i;
+          return (
+            <g key={d.date} onMouseEnter={() => setHoverIdx(i)} onClick={() => setHoverIdx(i)} className="cursor-pointer">
+              <rect x={x} y={0} width={slot} height={chartHeight} fill="transparent" />
+              {h > 0 && (
+                <rect
+                  x={x + gap / 2} y={chartHeight - h} width={barWidth} height={h} rx={Math.min(barWidth * 0.3, 1)}
+                  fill={isHover ? '#FFD84D' : '#F5C400'}
+                />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-[11px] text-[#A6A49C]">
+        <span>{formatShortDate(series[0].date)}</span>
+        <span>{formatShortDate(series[series.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatShortDate(dateStr) {
+  const { day, month } = dayMonth(dateStr);
+  return `${day} ${month}`;
 }
 
 function dayMonth(dateStr) {
