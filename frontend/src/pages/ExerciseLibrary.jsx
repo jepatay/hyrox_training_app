@@ -316,10 +316,10 @@ export default function ExerciseLibrary() {
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-border rounded-lg">
+      <div className="overflow-auto border border-border rounded-lg max-h-[70vh]">
         <table className="w-full text-sm min-w-[1180px]">
-          <thead>
-            <tr className="text-left text-[10px] text-muted-foreground uppercase tracking-wide bg-secondary/40">
+          <thead className="sticky top-0 z-10">
+            <tr className="text-left text-[10px] text-muted-foreground uppercase tracking-wide bg-card shadow-[0_1px_0_0] shadow-border">
               {statusFilter === 'pending' && <th className="font-medium py-2 px-2 w-8"></th>}
               <th className="font-medium py-2 px-2 min-w-[160px]">Name</th>
               <th className="font-medium py-2 px-2 min-w-[100px]">Unit</th>
@@ -368,13 +368,15 @@ export default function ExerciseLibrary() {
                       </SelectContent>
                     </Select>
                     {entry.unit === 'cal' && (
-                      <Input
-                        type="number" step="0.5" className="h-8 w-14 text-xs px-1"
-                        value={entry.metersPerCal ?? ''}
-                        onChange={e => handleTextChange(entry, 'metersPerCal', e.target.value)}
-                        onBlur={() => persist(entry.key, { metersPerCal: Number(entry.metersPerCal) || 10 })}
-                        title="meters per calorie"
-                      />
+                      <div className="flex items-center gap-1" title="How many meters one logged calorie is worth, for converting a cal reading into distance before scoring">
+                        <Input
+                          type="number" step="0.5" className="h-8 w-14 text-xs px-1"
+                          value={entry.metersPerCal ?? ''}
+                          onChange={e => handleTextChange(entry, 'metersPerCal', e.target.value)}
+                          onBlur={() => persist(entry.key, { metersPerCal: Number(entry.metersPerCal) || 10 })}
+                        />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">m/cal</span>
+                      </div>
                     )}
                   </div>
                 </td>
@@ -449,7 +451,10 @@ export default function ExerciseLibrary() {
                     </SelectContent>
                   </Select>
                   {newRow.unit === 'cal' && (
-                    <Input type="number" step="0.5" className="h-8 w-14 text-xs px-1" value={newRow.metersPerCal ?? ''} onChange={e => setNewRow(prev => ({ ...prev, metersPerCal: e.target.value }))} />
+                    <div className="flex items-center gap-1">
+                      <Input type="number" step="0.5" className="h-8 w-14 text-xs px-1" value={newRow.metersPerCal ?? ''} onChange={e => setNewRow(prev => ({ ...prev, metersPerCal: e.target.value }))} />
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">m/cal</span>
+                    </div>
                   )}
                 </div>
               </td>
