@@ -1,14 +1,18 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Target, Mic, Trophy, BookOpen, Menu, X, ListChecks, Ruler } from 'lucide-react';
+import { Home, Target, Mic, Dumbbell, Trophy, BookOpen, Menu, X, ListChecks, Ruler } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 // Change Brief V2 Phase 5 menu: Trends, Monthly Report, Suggest Training,
 // Venues and the old Station Model nav item (and their routes) are removed;
 // their data stays in Firestore untouched. Exercise Library and Station
-// References nest under Knowledge Library per the design.
+// References nest under Knowledge Library per the design. Training Log was
+// dropped from this list too (Home was meant to absorb it) but Home only
+// shows a recent slice with no pagination, so the full log with filters,
+// editing and Strava sync stays reachable here.
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
+  { path: '/training', label: 'Training Log', icon: Dumbbell },
   { path: '/objectives', label: 'Objectives', icon: Target },
   { path: '/drafts', label: 'Drafts', icon: Mic },
   { path: '/records', label: 'Records', icon: Trophy },

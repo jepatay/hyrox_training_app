@@ -185,7 +185,9 @@ export default function Home() {
 
           <div className="flex justify-between items-baseline">
             <h2 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-2xl">Training log</h2>
-            <div className="text-[13px] text-[#A6A49C]">Newest first</div>
+            <button onClick={() => navigate('/training')} className="text-[13px] text-[#A6A49C] underline underline-offset-2">
+              View all
+            </button>
           </div>
 
           <div className="flex flex-col gap-2">
