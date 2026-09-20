@@ -60,7 +60,7 @@ export default function StationReferences() {
   const [rescoringId, setRescoringId] = useState(null);
   const { toast } = useToast();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); handleDryRun(); }, []);
 
   async function load() {
     try {
@@ -328,7 +328,7 @@ export default function StationReferences() {
             <Button size="sm" variant="outline" className="gap-1.5" onClick={handleDryRun} disabled={dryRunning}>
               <RefreshCw className="h-3.5 w-3.5" /> {dryRunning ? 'Running...' : '1. Dry run'}
             </Button>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={handleExtract} disabled={extracting || !dryRun}>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={handleExtract} disabled={extracting}>
               {extracting
                 ? `Extracting... ${extractProgress ? `${extractProgress.processed} done, ${extractProgress.remaining} left` : ''}`
                 : '2. Extraction pass (runs to completion)'}
@@ -338,7 +338,7 @@ export default function StationReferences() {
                 Stop
               </Button>
             )}
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={handleScore} disabled={scoring || !dryRun}>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={handleScore} disabled={scoring}>
               {scoring ? 'Scoring...' : '3. Scoring pass (all pending)'}
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRebuild} disabled={rebuilding}>
