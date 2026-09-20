@@ -758,7 +758,7 @@ Valid station keys: running, skierg, sled_push, sled_pull, row_erg, farmers_carr
   return chatJson(prompt, 400);
 }
 
-export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes }) {
+export async function generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, stationVolumeBlock, transferabilityNotes, readinessScaleNotes }) {
   const age = ageFromBirthday(profile?.birthday);
   const profileLine = [
     profile?.gender,
@@ -851,13 +851,17 @@ Also return "estimatedPerformance": a short string estimating the athlete's curr
     ? `\n${trainingLoadBlock}\n`
     : '';
 
+  const volumeBlock = stationVolumeBlock
+    ? `\n${stationVolumeBlock}\n`
+    : '';
+
   const prompt = `You are this athlete's dedicated personal HYROX and running coach. Analyse their readiness for their upcoming goal and return a JSON response.${knowledgeBlock}${scaleBlock}${transferabilityBlock}
 
 Athlete: ${profileLine}
 
 Objective:
 ${objectiveDetail}${stationInfo}
-${loadBlock}
+${loadBlock}${volumeBlock}
 Recent sessions — last 20, most recent first (read notes for actual content: exercises, weights, distances, paces):
 ${recentSummary}
 
@@ -867,7 +871,7 @@ ${recordsSummary}
 How to score readiness:
 - Use past race records/PRs as the primary calibration anchor. If the athlete has a record at or faster than the target, readiness starts at 7+ and is adjusted for training quality. If their best is within 5% of the target, baseline is 6-7.
 - Use the longitudinal load data (weekly digests + ATL/CTL) to understand volume and intensity trends. This is your primary source for development over the last 3 months.
-- Read recent session notes for specific content: exercises, weights, reps, paces, sets. This tells you WHAT was trained.
+${stationVolumeBlock ? '- The accumulated RE volume block above is ground truth, computed directly from scored sessions, not an impression from note text. Each station\'s per-station radarData/focusArea score must be consistent with its relative rank there: the station with the most accumulated RE should not be scored the weakest, and a station near the bottom should not be scored the strongest, unless the notes give a specific, named reason (a technical fault, an injury, a stalled weight) that overrides raw volume for that one station. Note text tells you about QUALITY within a station (technique, pacing, struggle); the RE numbers tell you about QUANTITY — use both, but do not let a single offhand comment override the volume ranking.\n' : ''}- Read recent session notes for specific content: exercises, weights, reps, paces, sets. This tells you WHAT was trained.
 - Use the knowledge base to map training to race demands.
 - Volume and intensity consistency across weeks matters more than any single session.
 - RPE is secondary context only.

@@ -24,6 +24,22 @@ export function computeDailyTotal(date, sessions) {
   return { date, re, coreReps, sessionIds };
 }
 
+// Sums a set of dailyTotal docs (as returned by the /api/daily-totals route)
+// into one per-category RE tally over a trailing window. Used to ground the
+// Objectives readiness analysis in actual trained volume rather than only
+// the LLM's read of session note text — see routes/objectives.js.
+export function sumDailyTotalsRE(dailyTotals, windowDays) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - windowDays);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const re = Object.fromEntries(CATEGORY_KEYS.map(k => [k, 0]));
+  for (const d of dailyTotals || []) {
+    if (!d.date || d.date < cutoffStr) continue;
+    for (const k of CATEGORY_KEYS) re[k] += d.re?.[k] || 0;
+  }
+  return re;
+}
+
 // Always recomputed from that day's sessions, never incremented — so a
 // changed weight, a rescored session, or a deleted one is reflected exactly,
 // with no drift from a missed decrement anywhere. Home and Objectives read

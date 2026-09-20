@@ -2,10 +2,32 @@ import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { generateReadinessAnalysis } from '../services/claude.js';
 import { fetchWeeklyDigests, computeLoadFromDigests, formatLoadForPrompt } from '../services/trainingLoad.js';
+import { sumDailyTotalsRE } from '../services/dailyTotals.js';
 import admin from 'firebase-admin';
 
 const router = Router();
 const READINESS_STALE_DAYS = 7;
+const STATION_VOLUME_WINDOW_DAYS = 42;
+
+// scoring.js's CATEGORY_KEYS -> the station labels used elsewhere (Home,
+// LogSession). `core` is left out — it isn't a HYROX station.
+const CATEGORY_TO_STATION_LABEL = {
+  run: 'Run', skierg: 'SkiErg', sled_push: 'Sled Push', sled_pull: 'Sled Pull',
+  burpee_broad_jump: 'Burpee Broad Jump', row: 'Row Erg', farmers_carry: 'Farmers Carry',
+  sandbag_lunges: 'Walking Lunges', wall_balls: 'Wall Ball',
+};
+
+// Formats accumulated RE per station as ground-truth training volume for the
+// readiness prompt (Change Brief V2's deferred "switch readiness to
+// accumulated RE" — grounding rather than replacing the qualitative read,
+// since technique/quality within a station still needs the note text).
+function formatStationVolumeBlock(re, windowDays) {
+  const lines = Object.entries(CATEGORY_TO_STATION_LABEL)
+    .map(([key, label]) => [label, re[key] || 0])
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, val]) => `- ${label}: ${val.toFixed(2)} RE`);
+  return `Actual trained volume — accumulated race-equivalent (RE) by station, last ${windowDays} days (1.0 RE = one full race distance/load of that station; this is ground truth summed from logged and scored sessions, ranked highest to lowest):\n${lines.join('\n')}`;
+}
 
 // Optional per-objective override of the pace scoring.js falls back to
 // Station References for (section 3: "objectives gain optional
@@ -68,7 +90,18 @@ async function buildReadiness(objective) {
   const load = computeLoadFromDigests(digests);
   const trainingLoadBlock = formatLoadForPrompt(digests, load);
 
-  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, transferabilityNotes, readinessScaleNotes });
+  let stationVolumeBlock = null;
+  if (isHyrox) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - STATION_VOLUME_WINDOW_DAYS);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const dailyTotalsSnap = await collections.dailyTotals().where('date', '>=', cutoffStr).get();
+    const dailyTotals = dailyTotalsSnap.docs.map(d => d.data());
+    const re = sumDailyTotalsRE(dailyTotals, STATION_VOLUME_WINDOW_DAYS);
+    stationVolumeBlock = formatStationVolumeBlock(re, STATION_VOLUME_WINDOW_DAYS);
+  }
+
+  return generateReadinessAnalysis({ objective, recentSessions, records, profile, knowledge, trainingLoadBlock, stationVolumeBlock, transferabilityNotes, readinessScaleNotes });
 }
 
 // GET all objectives — triggers background readiness refresh for stale objectives
