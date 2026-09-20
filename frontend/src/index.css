@@ -4,21 +4,24 @@
 
 @layer base {
   :root {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 24 100% 55%;
-    --primary: 24 100% 55%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 13%;
-    --muted-foreground: 215 20% 55%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
+    /* Brand palette (from Home/LogSession): #0E0F11 bg, #1A1C1F card,
+       #26292D border, #33373B accent surface, #F3F1EB text, #A6A49C muted,
+       #F5C400 primary/accent. */
+    --background: 220 10% 6%;
+    --foreground: 45 25% 94%;
+    --card: 216 9% 11%;
+    --card-foreground: 45 25% 94%;
+    --border: 214 8% 16%;
+    --input: 214 8% 16%;
+    --ring: 48 100% 48%;
+    --primary: 48 100% 48%;
+    --primary-foreground: 220 10% 6%;
+    --secondary: 210 7% 22%;
+    --secondary-foreground: 45 25% 94%;
+    --muted: 216 9% 11%;
+    --muted-foreground: 48 5% 63%;
+    --accent: 210 7% 22%;
+    --accent-foreground: 45 25% 94%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 210 40% 98%;
     --radius: 0.5rem;
@@ -31,7 +34,11 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Barlow', system-ui, -apple-system, sans-serif;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Barlow Condensed', system-ui, -apple-system, sans-serif;
+    font-weight: 700;
   }
 }
 

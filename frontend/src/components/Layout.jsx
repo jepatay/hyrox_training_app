@@ -38,7 +38,7 @@ export default function Layout({ children }) {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-5 border-b border-border">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-sm">H</div>
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold text-sm">H</div>
           <div>
             <p className="font-bold text-sm leading-none">HYROX</p>
             <p className="text-xs text-muted-foreground">Training Tracker</p>

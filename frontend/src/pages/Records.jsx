@@ -170,7 +170,7 @@ function RecordTab({ records, type, onDelete }) {
                   contentStyle={{ background: 'hsl(222 47% 11%)', border: '1px solid hsl(217 33% 17%)', borderRadius: 8 }}
                   formatter={(v, _, { payload }) => [payload.label, 'Time']}
                 />
-                <Line type="monotone" dataKey="minutes" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316', r: 4 }} />
+                <Line type="monotone" dataKey="minutes" stroke="#F5C400" strokeWidth={2} dot={{ fill: '#F5C400', r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>

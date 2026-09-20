@@ -125,8 +125,6 @@ export default function LogSession() {
 
   return (
     <div className="bg-[#0E0F11] text-[#F3F1EB] font-['Barlow',system-ui,sans-serif] -m-6 p-5 min-h-screen flex flex-col gap-4">
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
       <div className="flex items-center gap-2">
         <button

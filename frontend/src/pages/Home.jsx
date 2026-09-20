@@ -115,9 +115,6 @@ export default function Home() {
 
   return (
     <div className="bg-[#0E0F11] text-[#F3F1EB] font-['Barlow',system-ui,sans-serif] -m-6 p-5 min-h-screen space-y-4">
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
-
       <div className="flex justify-between items-end">
         <div>
           <div className="font-['Barlow_Condensed',sans-serif] font-semibold text-sm tracking-wider uppercase text-[#A6A49C]">HYROX training</div>

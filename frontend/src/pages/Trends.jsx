@@ -147,8 +147,8 @@ function TrendCard({ station, points }) {
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
           <line x1={PAD} x2={W - PAD} y1={refY} y2={refY} stroke="currentColor" className="text-border" strokeWidth="1" strokeDasharray="2 3" />
-          <path d={areaD} fill="#f97316" opacity="0.1" />
-          <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" />
+          <path d={areaD} fill="#F5C400" opacity="0.1" />
+          <path d={pathD} fill="none" stroke="#F5C400" strokeWidth="2" />
           {points.map((p, i) => (
             <circle key={i} cx={px(i)} cy={py(p.ratio * 100)} r={i === points.length - 1 ? 4 : 2.5} fill={tierColor(tierFromRatio(p.ratio))} stroke="currentColor" className="text-card" strokeWidth="1.2" />
           ))}
@@ -207,7 +207,7 @@ function QuadrantView({ station, points }) {
                     cx={x(Math.min(p.volumeRatio * 100, domainMax))}
                     cy={y(Math.min(p.loadRatio * 100, domainMax))}
                     r={isLatest ? 6 : 3.5}
-                    fill={isLatest ? '#f97316' : 'currentColor'}
+                    fill={isLatest ? '#F5C400' : 'currentColor'}
                     className={isLatest ? '' : 'text-muted-foreground'}
                     opacity={isLatest ? 1 : 0.55}
                   >

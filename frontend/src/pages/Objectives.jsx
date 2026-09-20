@@ -272,7 +272,7 @@ function ObjectiveCard({ obj, onEdit, onDelete, onAnalyze, onLogResult, analyzin
                             <PolarGrid stroke="#374151" />
                             <PolarAngleAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} />
                             <PolarRadiusAxis domain={[0, 10]} tick={false} axisLine={false} />
-                            <Radar dataKey="readiness" stroke="#f97316" fill="#f97316" fillOpacity={0.2} strokeWidth={2} />
+                            <Radar dataKey="readiness" stroke="#F5C400" fill="#F5C400" fillOpacity={0.2} strokeWidth={2} />
                             <Tooltip
                               formatter={(v) => [`${v}/10`, 'Readiness']}
                               contentStyle={{ background: '#1f2937', border: '1px solid #374151', fontSize: 12 }}

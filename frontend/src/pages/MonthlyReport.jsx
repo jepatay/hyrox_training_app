@@ -129,7 +129,7 @@ export default function MonthlyReport() {
                         contentStyle={{ background: 'hsl(222 47% 11%)', border: '1px solid hsl(217 33% 17%)', borderRadius: 8 }}
                         formatter={(v, name) => [v, name === 'load' ? 'Session Load' : name === 'sessions' ? 'Sessions' : name]}
                       />
-                      <Bar dataKey="load" fill="#f97316" radius={[4, 4, 0, 0]} name="Session Load" />
+                      <Bar dataKey="load" fill="#F5C400" radius={[4, 4, 0, 0]} name="Session Load" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
