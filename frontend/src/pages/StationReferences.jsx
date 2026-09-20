@@ -127,8 +127,13 @@ export default function StationReferences() {
   // Loops the batched endpoint itself instead of making the athlete click
   // once per 20 sessions — a full history can be several hundred sessions,
   // each an LLM call, so this keeps batching (never one giant request) but
-  // drives it to completion automatically, refreshing the dry-run count
-  // after every batch so progress is visible as it goes.
+  // drives it to completion automatically. Progress comes from each batch's
+  // own response (`remaining`) rather than a fresh dry-run call every time —
+  // that used to double the Firestore reads per batch (a full session +
+  // library scan) and, combined with a real N+1 bug in resolving each
+  // session's exercises separately, exhausted the Firestore read quota
+  // partway through a ~180-session backlog. A small pause between batches
+  // avoids bursting the API too.
   async function handleExtract() {
     setExtracting(true);
     extractStopRef.current = false;
@@ -140,9 +145,10 @@ export default function StationReferences() {
         totalProcessed += result.processed;
         totalErrors = totalErrors.concat(result.errors);
         setExtractProgress({ processed: totalProcessed, remaining: result.remaining, errors: totalErrors.length });
-        handleDryRun();
         if (result.remaining <= 0 || result.processed === 0) break;
+        await new Promise(r => setTimeout(r, 500));
       }
+      handleDryRun();
       toast({
         title: extractStopRef.current ? 'Extraction stopped' : 'Extraction complete',
         description: `${totalProcessed} session(s) extracted total, ${totalErrors.length} error(s).`,

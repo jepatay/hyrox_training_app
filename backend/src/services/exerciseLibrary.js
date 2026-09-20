@@ -264,17 +264,25 @@ async function createPendingEntry(name, notes, library) {
 // pending one via AI suggestion — and stamps the resolved libraryKey onto it.
 // This is the one place scoring, rendering and the review UI all trace back
 // to, so what an exercise counts toward is never a silent per-call guess.
-export async function resolveExercisesAgainstLibrary(rawExercises) {
-  const library = await listLibrary();
+// `library` can be pre-fetched and passed in by a caller resolving many
+// batches of exercises in a loop (e.g. the reprocess extraction pass) —
+// otherwise every iteration would re-fetch the whole library from Firestore
+// on its own (a real N+1 that can exhaust Firestore's read quota over a few
+// hundred sessions). Passing the same array across calls also means a
+// pending entry created for one session is immediately visible to the next,
+// so two sessions in the same batch naming the same new exercise don't each
+// create their own duplicate.
+export async function resolveExercisesAgainstLibrary(rawExercises, library) {
+  const lib = library || await listLibrary();
   const resolved = [];
   for (const e of rawExercises || []) {
     if (!e?.name) continue;
-    let entry = matchExercise(e.name, library);
+    let entry = matchExercise(e.name, lib);
     if (!entry) {
-      entry = await createPendingEntry(e.name, e.notes, library);
-      library.push(entry);
+      entry = await createPendingEntry(e.name, e.notes, lib);
+      lib.push(entry);
     }
     resolved.push({ ...e, libraryKey: entry.key });
   }
-  return { exercises: resolved, library };
+  return { exercises: resolved, library: lib };
 }

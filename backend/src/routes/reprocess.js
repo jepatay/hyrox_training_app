@@ -70,7 +70,7 @@ router.get('/dry-run', async (_req, res) => {
 router.post('/extract', async (req, res) => {
   try {
     const { limit = 20, force = false } = req.body || {};
-    const sessions = await allSessions();
+    const [sessions, library] = await Promise.all([allSessions(), listLibrary()]);
     const pending = sessions
       .filter(s => (s.notes?.trim() || s.runningDistance) && (force || !s.extractionV2))
       .slice(0, limit);
@@ -82,8 +82,11 @@ router.post('/extract', async (req, res) => {
           ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
           : { lines: [] };
         const lines = ensureRunLines(raw?.lines, session).filter(l => l.exercise);
+        // Same `library` array reused (and mutated in place with any new
+        // pending entries) across every session in this batch — one fetch
+        // for up to `limit` sessions instead of one per session.
         const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
-          lines.map(l => ({ ...l, name: l.exercise }))
+          lines.map(l => ({ ...l, name: l.exercise })), library
         );
         const finalLines = lines.map((l, i) => ({ ...l, libraryKey: resolvedLines[i]?.libraryKey }));
         const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
