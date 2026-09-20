@@ -60,7 +60,7 @@ export default function StationReferences() {
   const [rescoringId, setRescoringId] = useState(null);
   const { toast } = useToast();
 
-  useEffect(() => { load(); handleDryRun(); }, []);
+  useEffect(() => { load(); }, []);
 
   async function load() {
     try {
