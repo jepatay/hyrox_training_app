@@ -149,15 +149,20 @@ export function linesFromExtractionV2(extractionLines, library) {
     const exercise = l.libraryKey ? byKey.get(l.libraryKey) : null;
     const unit = exercise?.unit || 'reps';
     const n = l.intervals || 1;
-    const distanceM = l.distanceM != null ? l.distanceM * n : undefined;
-    const calories = l.calories != null ? l.calories * n : undefined;
-    const reps = l.reps != null ? l.reps * n : undefined;
-    const timeSec = l.timeSec != null ? l.timeSec * n : undefined;
+    // null, never undefined, for an absent field — Firestore's SDK throws
+    // on a literal `undefined` property in a write (unlike a merely
+    // missing/omitted one), which is exactly what crashed the scoring pass
+    // for nearly every real session (most lines lack at least one of
+    // weight/distance/calories/time).
+    const distanceM = l.distanceM != null ? l.distanceM * n : null;
+    const calories = l.calories != null ? l.calories * n : null;
+    const reps = l.reps != null ? l.reps * n : null;
+    const timeSec = l.timeSec != null ? l.timeSec * n : null;
     const qty = unit === 'cal' ? calories : (unit === 'm' || unit === 'km') ? distanceM : reps;
 
     return {
       exerciseKey: l.libraryKey,
-      qty, weightKg: l.weightKg ?? undefined, distanceM, calories, timeSec,
+      qty, weightKg: l.weightKg ?? null, distanceM, calories, timeSec,
       part: l.part,
     };
   });

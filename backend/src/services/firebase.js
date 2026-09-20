@@ -14,6 +14,13 @@ function getDb() {
       });
     }
     db = admin.firestore();
+    // Backstop, not the fix: the SDK throws on a literal `undefined`
+    // property in a write (a merely-omitted one is fine). The actual bug
+    // that caused this (linesFromExtractionV2 emitting `undefined` for an
+    // absent weight/distance/calories/time) is fixed at the source in
+    // scoring.js — this just stops the next one from taking the whole
+    // scoring pass down instead of failing loudly in code review.
+    db.settings({ ignoreUndefinedProperties: true });
   }
   return db;
 }
