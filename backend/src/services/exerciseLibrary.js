@@ -49,12 +49,18 @@ const BUILTIN_EXERCISES = [
   { key: 'overheadPress', label: 'Overhead Press', aliases: ['ohp', 'shoulder press', 'military press'], unit: 'reps', credits: {} },
   { key: 'bentOverRow', label: 'Bent Over Row', aliases: ['barbell row'], unit: 'reps', credits: {} },
   { key: 'situp', label: 'Sit Up', aliases: ['sit ups', 'crunches', 'crunch'], unit: 'reps', credits: { core: 1 } },
-  { key: 'russianTwist', label: 'Russian Twist', aliases: ['russian twists'], unit: 'reps', credits: {} },
-  { key: 'legRaise', label: 'Leg Raise', aliases: ['leg raises', 'hanging leg raise'], unit: 'reps', credits: {} },
-  { key: 'plank', label: 'Plank', aliases: ['planks'], unit: 'reps', credits: {} },
-  { key: 'toesToBar', label: 'Toes To Bar', aliases: ['t2b'], unit: 'reps', credits: {} },
-  { key: 'abWheel', label: 'Ab Wheel', aliases: [], unit: 'reps', credits: {} },
-  { key: 'wallSit', label: 'Wall Sit', aliases: [], unit: 'reps', credits: {} },
+  { key: 'russianTwist', label: 'Russian Twist', aliases: ['russian twists'], unit: 'reps', credits: { core: 0.4 } },
+  { key: 'legRaise', label: 'Leg Raise', aliases: ['leg raises', 'hanging leg raise'], unit: 'reps', credits: { core: 0.5 } },
+  {
+    key: 'plank', label: 'Plank', aliases: ['planks'], unit: 'reps', credits: { core: 0.5 },
+    reasoning: 'Isometric hold, usually logged in seconds rather than reps — the credit applies to whatever number is logged against it until the app supports a time-based unit. Placeholder, confirm.',
+  },
+  { key: 'toesToBar', label: 'Toes To Bar', aliases: ['t2b'], unit: 'reps', credits: { core: 0.6 } },
+  { key: 'abWheel', label: 'Ab Wheel', aliases: [], unit: 'reps', credits: { core: 0.6 } },
+  {
+    key: 'wallSit', label: 'Wall Sit', aliases: [], unit: 'reps', credits: { core: 0.15 },
+    reasoning: 'Mostly a quad/leg isometric hold, not primarily core — small credit only. Same seconds-vs-reps caveat as Plank.',
+  },
   { key: 'dip', label: 'Dip', aliases: ['dips', 'tricep dip'], unit: 'reps', credits: {} },
   { key: 'handstandPushUp', label: 'Handstand Push Up', aliases: ['hspu'], unit: 'reps', credits: {} },
 
@@ -85,7 +91,7 @@ const BUILTIN_EXERCISES = [
   { key: 'tuckJump', label: 'Tuck Jump', aliases: [], unit: 'reps', credits: { burpee_broad_jump: 0.3 } },
   { key: 'burpee', label: 'Burpee', aliases: ['burpees'], unit: 'reps', credits: { burpee_broad_jump: 0.6 } },
   { key: 'pushUp', label: 'Push Up', aliases: ['push ups', 'pushups'], unit: 'reps', credits: { core: 0.3 } },
-  { key: 'mountainClimbers', label: 'Mountain Climbers', aliases: ['mountain climber'], unit: 'reps', credits: { wall_balls: 0.1 } },
+  { key: 'mountainClimbers', label: 'Mountain Climbers', aliases: ['mountain climber'], unit: 'reps', credits: { wall_balls: 0.1, core: 0.3 } },
   { key: 'battleRopes', label: 'Battle Ropes', aliases: ['battle rope'], unit: 'reps', credits: { row_erg: 0.2 } },
   { key: 'jumpRope', label: 'Jump Rope', aliases: ['skipping', 'double unders'], unit: 'reps', credits: { running: 0.2, skierg: 0.1 } },
   { key: 'ropeClimb', label: 'Rope Climb', aliases: ['rope climbs'], unit: 'reps', credits: { farmers_carry: 0.2 } },
@@ -136,7 +142,12 @@ async function ensureBuiltinsSeeded() {
 // old values would otherwise never update. This applies the correction once
 // per doc (flagged `creditsV2: true`) so it never overwrites an athlete's own
 // edit made after the correction has already landed.
-const CREDITS_V2_CORRECTIONS = ['situp', 'pushUp', 'thruster', 'wallBalls', 'assaultBike'];
+const CREDITS_V2_CORRECTIONS = [
+  'situp', 'pushUp', 'thruster', 'wallBalls', 'assaultBike',
+  // Added after Phase 1 shipped without them: the rest of the builtin ab/core
+  // movements, which had empty credits until now.
+  'russianTwist', 'legRaise', 'plank', 'toesToBar', 'abWheel', 'wallSit', 'mountainClimbers',
+];
 
 async function applyCreditsV2Corrections() {
   const keys = CREDITS_V2_CORRECTIONS;
