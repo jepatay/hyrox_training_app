@@ -29,6 +29,7 @@ const LIMIT_FIELDS = [
   { key: 'paceCap', label: 'Pace cap' },
   { key: 'floor', label: 'Floor' },
   { key: 'warmupWeight', label: 'Warm-up weight' },
+  { key: 'referenceVestKg', label: 'Reference vest (kg)' },
 ];
 
 function paceLabel(secPerKm) {

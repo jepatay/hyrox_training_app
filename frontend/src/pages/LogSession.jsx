@@ -33,6 +33,7 @@ export default function LogSession() {
   // Step 1
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [isClass, setIsClass] = useState(false);
+  const [weightVestKg, setWeightVestKg] = useState(null);
   const [notesInput, setNotesInput] = useState('');
   const [sessionId, setSessionId] = useState(null);
 
@@ -59,7 +60,7 @@ export default function LogSession() {
       let id = sessionId;
       if (!id) {
         const created = await sessionsApi.create({
-          date, isClass, type: 'hyrox_training', status: 'completed', notes: notesInput,
+          date, isClass, weightVestKg, type: 'hyrox_training', status: 'completed', notes: notesInput,
         });
         id = created.id;
         setSessionId(id);
@@ -156,6 +157,26 @@ export default function LogSession() {
                 className={`min-h-[40px] min-w-[64px] text-[15px] font-semibold ${isClass ? 'bg-[#26292D] text-[#0E0F11]' : 'bg-transparent text-[#F3F1EB]'}`}
               >Class</button>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setWeightVestKg(weightVestKg ? null : 9)}
+              className={`flex items-center gap-1.5 min-h-[40px] px-3 rounded-full border-2 text-[15px] font-semibold ${
+                weightVestKg ? 'border-orange-400 bg-orange-400/10 text-orange-300' : 'border-[#F3F1EB] bg-transparent text-[#F3F1EB]'
+              }`}
+            >
+              🦺 Weight vest
+            </button>
+            {weightVestKg != null && (
+              <>
+                <input
+                  type="number" min="1" step="0.5" value={weightVestKg}
+                  onChange={e => setWeightVestKg(e.target.value === '' ? null : Number(e.target.value))}
+                  className="w-16 min-h-[40px] px-2 bg-[#1A1C1F] rounded-lg text-[15px] font-semibold text-[#F3F1EB] border-0"
+                />
+                <span className="text-xs text-[#A6A49C]">kg — for run, burpees, lunges</span>
+              </>
+            )}
           </div>
           <div className="flex flex-col gap-2 flex-grow">
             <label htmlFor="session-text" className="text-sm font-semibold text-[#A6A49C]">Everything you did, in your own words</label>

@@ -238,7 +238,7 @@ router.post('/:id/confirm-extraction-v2', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const {
-      date, type, status, isClass, weightVest, location, equipment,
+      date, type, status, isClass, weightVest, weightVestKg, location, equipment,
       exercises, runningDistance, intervals, weights, duration,
       rpe, volume, notes,
     } = req.body;
@@ -250,6 +250,7 @@ router.post('/', async (req, res) => {
     const rpeNum = rpe ? Number(rpe) : null;
     const durNum = duration ? Number(duration) : null;
     const sessionLoad = rpeNum && durNum ? Math.round(rpeNum * durNum) : null;
+    const vestKgNum = Number(weightVestKg);
 
     const now = admin.firestore.FieldValue.serverTimestamp();
     const ref = await collections.sessions().add({
@@ -257,7 +258,11 @@ router.post('/', async (req, res) => {
       type,
       status: status || 'completed',
       isClass: isClass || false,
-      weightVest: weightVest || false,
+      // weightVest (boolean) stays for v1's flat burpee bonus and the
+      // coaching prompt; weightVestKg (actual weight, additive field) is
+      // what v2's scoreSession reads for its continuous vest-load factor.
+      weightVest: weightVest || (Number.isFinite(vestKgNum) && vestKgNum > 0),
+      weightVestKg: Number.isFinite(vestKgNum) && vestKgNum > 0 ? vestKgNum : null,
       location: location || null,
       equipment: equipment || null,
       exercises: exercises || [],

@@ -16,6 +16,8 @@ const LIBRARY = [
   { key: 'skiErg', unit: 'm', credits: { skierg: 1 }, status: 'approved' },
   { key: 'assaultBike', unit: 'cal', metersPerCal: 12, credits: { running: 0.3, skierg: 0.5, row_erg: 0.4 }, status: 'approved' },
   { key: 'notYetApproved', unit: 'reps', credits: { core: 0.5 }, status: 'pending' },
+  { key: 'burpeeBroadJump', unit: 'm', credits: { burpee_broad_jump: 1 }, status: 'approved' },
+  { key: 'walkingLunges', unit: 'm', credits: { sandbag_lunges: 1 }, referenceLoadKg: 20, status: 'approved' },
 ];
 
 const REFERENCES = {
@@ -31,7 +33,7 @@ const REFERENCES = {
     wall_balls: { raceQty: 100, unit: 'reps', referenceLoadKg: 6 },
     core: { raceQty: 100, unit: 'reps' },
   },
-  limits: { loadCap: 3.0, paceCap: 2.0, floor: 0.25, warmupWeight: 1.0 },
+  limits: { loadCap: 3.0, paceCap: 2.0, floor: 0.25, warmupWeight: 1.0, referenceVestKg: 9 },
 };
 
 function round3(n) {
@@ -183,4 +185,41 @@ test('linesFromExtractionV2: a line with no libraryKey scores as needs_library',
   const scoringLines = linesFromExtractionV2([{ part: 'main', intervals: 1, reps: 10 }], LIBRARY);
   const s = scoreSession(scoringLines, LIBRARY, REFERENCES);
   assert.ok(s.lines[0].flags.includes('needs_library'));
+});
+
+test('vest: no weightVestKg in sessionContext -> no effect on a vest-eligible category', () => {
+  const s = scoreSession([{ exerciseKey: 'run', qty: 8000, distanceM: 8000 }], LIBRARY, REFERENCES, null, {});
+  assert.equal(round3(s.re.run), 1.0); // no pace logged either -> neutral 1.0, no vest applied
+  const noContext = scoreSession([{ exerciseKey: 'run', qty: 8000, distanceM: 8000 }], LIBRARY, REFERENCES);
+  assert.equal(round3(noContext.re.run), round3(s.re.run));
+});
+
+test('vest: 9kg (the reference) on a run doubles its factor (1 + 9/9 = 2.0)', () => {
+  const s = scoreSession([{ exerciseKey: 'run', qty: 8000, distanceM: 8000 }], LIBRARY, REFERENCES, null, { weightVestKg: 9 });
+  assert.equal(round3(s.re.run), 2.0); // no pace -> base 1.0, x2.0 vest
+  assert.match(s.lines[0].credits.run.basis, /vest \(9kg\)/);
+});
+
+test('vest: applies to burpee broad jump (no base factor -> vest is the whole multiplier)', () => {
+  const s = scoreSession([{ exerciseKey: 'burpeeBroadJump', qty: 80, distanceM: 80 }], LIBRARY, REFERENCES, null, { weightVestKg: 9 });
+  assert.equal(round3(s.re.burpee_broad_jump), 2.0);
+});
+
+test('vest: compounds with a category\'s own load factor (sandbag lunges)', () => {
+  // 40kg sandbag vs 20kg reference -> loadFactor 2.0 (itself capped at loadCap
+  // independently); 9kg vest -> a separate x2.0 (also capped independently).
+  // The two factors compound uncapped as a product (2.0 x 2.0 = 4.0) -- each
+  // piece is sanity-capped on its own, not the combined result.
+  const s = scoreSession([{ exerciseKey: 'walkingLunges', qty: 100, distanceM: 100, weightKg: 40 }], LIBRARY, REFERENCES, null, { weightVestKg: 9 });
+  assert.equal(round3(s.re.sandbag_lunges), 4.0);
+});
+
+test('vest: never applies to a non-eligible category (wall balls)', () => {
+  const withVest = scoreSession([{ exerciseKey: 'wallBalls', qty: 100, weightKg: 6 }], LIBRARY, REFERENCES, null, { weightVestKg: 9 });
+  assert.equal(round3(withVest.re.wall_balls), 1.0);
+});
+
+test('vest: factor is floored at 1.0 (never a penalty) and never negative', () => {
+  const s = scoreSession([{ exerciseKey: 'run', qty: 8000, distanceM: 8000 }], LIBRARY, REFERENCES, null, { weightVestKg: 0 });
+  assert.equal(round3(s.re.run), 1.0);
 });

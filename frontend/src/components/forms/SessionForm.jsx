@@ -21,7 +21,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
   const [form, setForm] = useState({
     date: session?.date?.slice(0, 10) || today,
     isClass: session?.isClass || false,
-    weightVest: session?.weightVest || false,
+    weightVestKg: session?.weightVestKg ?? (session?.weightVest ? 9 : null),
     notes: session?.notes || '',
   });
   // 'form' -> 'extracting' -> 'review' -> 'finalizing'
@@ -44,7 +44,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
       const data = {
         date: form.date,
         isClass: form.isClass,
-        weightVest: form.weightVest,
+        weightVestKg: form.weightVestKg,
         notes: form.notes,
         type: session?.type || DEFAULT_TYPE,
         status: 'completed',
@@ -189,18 +189,29 @@ export default function SessionForm({ session, onClose, onSaved }) {
               <span>👥</span>
               <span className="text-xs">Class / Group Session</span>
             </button>
-            <button
-              type="button"
-              onClick={() => set('weightVest', !form.weightVest)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors h-9 ${
-                form.weightVest
-                  ? 'border-orange-500 bg-orange-500/10 text-orange-400'
-                  : 'border-border hover:bg-secondary text-muted-foreground'
-              }`}
-            >
-              <span>🦺</span>
-              <span className="text-xs">Weight Vest — 9 kg</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => set('weightVestKg', form.weightVestKg ? null : 9)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors h-9 ${
+                  form.weightVestKg
+                    ? 'border-orange-500 bg-orange-500/10 text-orange-400'
+                    : 'border-border hover:bg-secondary text-muted-foreground'
+                }`}
+              >
+                <span>🦺</span>
+                <span className="text-xs">Weight Vest</span>
+              </button>
+              {form.weightVestKg != null && (
+                <Input
+                  type="number" min="1" step="0.5"
+                  className="w-16 h-9 text-sm"
+                  value={form.weightVestKg}
+                  onChange={e => set('weightVestKg', e.target.value === '' ? null : Number(e.target.value))}
+                />
+              )}
+              {form.weightVestKg != null && <span className="text-xs text-muted-foreground">kg — used for run, burpees, lunges</span>}
+            </div>
           </div>
 
           <div className="space-y-1.5">

@@ -12,6 +12,14 @@ export const CATEGORY_KEYS = [
 const LOAD_CATEGORIES = new Set(['wall_balls', 'sled_push', 'sled_pull', 'farmers_carry', 'sandbag_lunges']);
 const PACE_CATEGORIES = new Set(['run', 'skierg', 'row']);
 
+// A worn weight vest isn't a race station of its own (there's no "vested
+// run" in HYROX) — it's a load multiplier layered on top of whichever
+// categories it actually makes harder. Scoped to the three the athlete
+// actually uses it for: running (incl. stairs, logged as run), burpee
+// broad jump, and sandbag lunges (compounding with the sandbag's own
+// load factor, since a vested lunge is loaded twice over).
+const VEST_CATEGORIES = new Set(['run', 'burpee_broad_jump', 'sandbag_lunges']);
+
 // The exerciseLibrary schema (Phase 1) still stores credits under the pre-v2
 // station names for these two categories — `running` and `row_erg` — because
 // renaming them would have broken the v1 scoring engine that reads the same
@@ -62,15 +70,32 @@ function targetPaceFor(category, references, objective) {
   return fromRef != null ? fromRef : null;
 }
 
+// Vest factor is session-level (the athlete logs "wore the vest" for the
+// whole session, not per exercise line — the form only ever captured that
+// much), so it applies uniformly to every line in the session crediting a
+// vest-eligible category. 1.0 (no bonus) with no vest or no weight logged
+// — never a guessed default weight. Uncapped floor at 1.0: a vest can only
+// add difficulty, never count against you. Capped by loadCap as a generic
+// sanity ceiling, same number already used for implement-load factors.
+function vestFactorFor(category, weightVestKg, limits, referenceVestKg) {
+  if (!VEST_CATEGORIES.has(category) || !weightVestKg) return { factor: 1.0, applied: false };
+  const ratio = 1 + weightVestKg / (referenceVestKg || 9);
+  return { factor: clamp(ratio, 1.0, limits.loadCap), applied: true };
+}
+
 // Scores every line of a session (each an exercise key the caller has
 // already matched against the library, e.g. via resolveExercisesAgainstLibrary)
 // against every category it credits. Missing library entry, missing
 // approval, missing load/pace/reference are never guessed — they either
 // contribute 0 (`needs_library`) or count at a neutral 1.0x factor, flagged
-// `estimated`, per section 2.4.
-export function scoreSession(lines, library, references, objective) {
+// `estimated`, per section 2.4. `sessionContext.weightVestKg` (optional)
+// layers a vest-load multiplier onto the categories it actually affects —
+// see `vestFactorFor`.
+export function scoreSession(lines, library, references, objective, sessionContext) {
   const libraryByKey = new Map((library || []).map(e => [e.key, e]));
   const limits = { ...DEFAULT_LIMITS, ...(references?.limits || {}) };
+  const referenceVestKg = references?.limits?.referenceVestKg;
+  const weightVestKg = Number(sessionContext?.weightVestKg) || 0;
   const re = Object.fromEntries(CATEGORY_KEYS.map(k => [k, 0]));
   const scoredLines = [];
 
@@ -122,6 +147,12 @@ export function scoreSession(lines, library, references, objective) {
         }
       } else {
         basis = 'volume only, no factor';
+      }
+
+      const vest = vestFactorFor(category, weightVestKg, limits, referenceVestKg);
+      if (vest.applied) {
+        factor *= vest.factor;
+        basis += ` × ${vest.factor.toFixed(2)} vest (${weightVestKg}kg)`;
       }
 
       const creditRE = (qty * weight * factor) / raceQty;

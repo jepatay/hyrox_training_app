@@ -20,7 +20,10 @@ const DEFAULTS = {
     wall_balls: { raceQty: 100, unit: 'reps', referenceLoadKg: 6 },
     core: { raceQty: 100, unit: 'reps' },
   },
-  limits: { loadCap: 3.0, paceCap: 2.0, floor: 0.25, warmupWeight: 1.0 },
+  // referenceVestKg: the vest weight scoring.js treats as the "1x extra"
+  // unit for its vest-load multiplier (run/burpee_broad_jump/sandbag_lunges)
+  // — set to the athlete's actual 9kg vest.
+  limits: { loadCap: 3.0, paceCap: 2.0, floor: 0.25, warmupWeight: 1.0, referenceVestKg: 9 },
 };
 
 // Reads the single stationReferences/main doc, seeding it with the defaults
@@ -61,7 +64,7 @@ function sanitizeCategoryPatch(patch) {
 function sanitizeLimits(limits) {
   if (!limits || typeof limits !== 'object') return {};
   const out = {};
-  for (const key of ['loadCap', 'paceCap', 'floor', 'warmupWeight']) {
+  for (const key of ['loadCap', 'paceCap', 'floor', 'warmupWeight', 'referenceVestKg']) {
     if (limits[key] === undefined) continue;
     const v = Number(limits[key]);
     if (Number.isFinite(v) && v > 0) out[key] = v;

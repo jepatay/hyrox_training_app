@@ -120,7 +120,7 @@ async function scoreOneSession(session, library, references, objective) {
     return null;
   }
   const scoringLines = linesFromExtractionV2(session.extractionV2.lines, library);
-  const scored = scoreSession(scoringLines, library, references, objective);
+  const scored = scoreSession(scoringLines, library, references, objective, { weightVestKg: session.weightVestKg });
   const v2 = {
     version: 1,
     lines: scored.lines,
