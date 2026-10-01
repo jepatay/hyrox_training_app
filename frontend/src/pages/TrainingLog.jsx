@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp, Dumbbell, RefreshCw, Link2, Link2Off } from 'lucide-react';
-import SessionForm from '@/components/forms/SessionForm';
 import CoachingThread from '@/components/CoachingThread';
 import StationImpact from '@/components/StationImpact';
 import { parseMarkdown } from '@/lib/utils';
@@ -18,8 +17,6 @@ export default function TrainingLog() {
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [stravaStatus, setStravaStatus] = useState(null); // null=loading, { connected, athlete }
   const [syncing, setSyncing] = useState(false);
@@ -113,15 +110,10 @@ export default function TrainingLog() {
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, coachingThread } : s));
   }
 
-  function handleSaved(session) {
-    setSessions(prev => {
-      const exists = prev.find(s => s.id === session.id);
-      return exists ? prev.map(s => s.id === session.id ? session : s) : [session, ...prev];
-    });
-    setShowForm(false);
-    setEditing(null);
-    if (session.coachingThread) setExpanded(session.id);
-    toast({ title: 'Saved!', description: 'Session logged successfully.' });
+  // Logging and editing both go through the same 3-step flow as Home's
+  // "Log training" button (write → confirm → score), then land back here.
+  function openLogFlow(sessionId) {
+    navigate(sessionId ? `/log?session=${sessionId}` : '/log', { state: { from: '/training' } });
   }
 
   async function handleStravaConnect() {
@@ -170,7 +162,7 @@ export default function TrainingLog() {
           <h1 className="text-2xl font-bold">Training Log</h1>
           <p className="text-muted-foreground text-sm">{sessions.length} sessions</p>
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
+        <Button onClick={() => openLogFlow()} className="gap-2">
           <Plus className="h-4 w-4" /> Log Session
         </Button>
       </div>
@@ -287,7 +279,7 @@ export default function TrainingLog() {
           <CardContent className="py-12 text-center">
             <Dumbbell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground mb-4">No sessions found. Start logging your training!</p>
-            <Button onClick={() => setShowForm(true)}>Log First Session</Button>
+            <Button onClick={() => openLogFlow()}>Log First Session</Button>
           </CardContent>
         </Card>
       ) : (
@@ -347,7 +339,7 @@ export default function TrainingLog() {
                           <Sparkles className="h-3 w-3" /> Feedback
                         </Button>
                       )}
-                      <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); setEditing(session); }}>
+                      <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); openLogFlow(session.id); }}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); handleDelete(session.id); }} className="text-destructive hover:text-destructive">
@@ -389,14 +381,6 @@ export default function TrainingLog() {
             );
           })}
         </div>
-      )}
-
-      {(showForm || editing) && (
-        <SessionForm
-          session={editing}
-          onClose={() => { setShowForm(false); setEditing(null); }}
-          onSaved={handleSaved}
-        />
       )}
     </div>
   );

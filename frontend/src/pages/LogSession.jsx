@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { sessionsApi, exerciseLibraryApi, reprocessApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { ArrowLeft, Plus } from 'lucide-react';
@@ -25,7 +25,14 @@ function lineSummary(l) {
 
 export default function LogSession() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  // Same flow for logging new and editing existing sessions, from Home or the
+  // Training Log — `?session=<id>` opens an existing one, and `state.from`
+  // says where to land when done.
+  const editId = searchParams.get('session');
+  const returnTo = location.state?.from || '/';
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -48,6 +55,17 @@ export default function LogSession() {
 
   useEffect(() => { exerciseLibraryApi.list().then(setLibrary).catch(() => {}); }, []);
 
+  useEffect(() => {
+    if (!editId) return;
+    sessionsApi.get(editId).then(s => {
+      setSessionId(s.id);
+      setDate(s.date?.slice(0, 10) || date);
+      setIsClass(!!s.isClass);
+      setWeightVestKg(s.weightVestKg ?? (s.weightVest ? 9 : null));
+      setNotesInput(s.notes || '');
+    }).catch(err => toast({ title: 'Error', description: err.message, variant: 'destructive' }));
+  }, [editId]);
+
   const libraryByKey = new Map(library.map(e => [e.key, e]));
 
   async function handleWriteSubmit() {
@@ -65,7 +83,7 @@ export default function LogSession() {
         id = created.id;
         setSessionId(id);
       } else {
-        await sessionsApi.update(id, { notes: notesInput });
+        await sessionsApi.update(id, { date, isClass, weightVestKg, notes: notesInput });
       }
       const result = await sessionsApi.extractV2(id);
       setExtractionV2(result.extractionV2);
@@ -129,7 +147,7 @@ export default function LogSession() {
       <div className="flex items-center gap-2">
         <button
           aria-label="Back"
-          onClick={() => step === 1 ? navigate('/') : setStep(step - 1)}
+          onClick={() => step === 1 ? navigate(returnTo) : setStep(step - 1)}
           className="w-11 h-11 rounded-full bg-[#1A1C1F] flex items-center justify-center"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -139,7 +157,7 @@ export default function LogSession() {
 
       {step === 1 && (
         <>
-          <h1 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-4xl leading-none">Write your session</h1>
+          <h1 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-4xl leading-none">{editId ? 'Edit your session' : 'Write your session'}</h1>
           <div className="flex gap-2.5 items-center">
             <input
               type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -314,7 +332,7 @@ export default function LogSession() {
           <div className="flex-grow" />
           <div className="flex gap-2.5">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate(returnTo)}
               className="flex-grow min-h-[56px] border-2 border-[#F5C400] rounded-xl bg-[#F5C400] text-[#0E0F11] font-['Barlow_Condensed',sans-serif] font-bold text-xl tracking-wide uppercase"
             >
               Save session
