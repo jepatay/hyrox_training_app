@@ -140,3 +140,22 @@ test('ensureRunLines does nothing for a non-running session type', () => {
   const session = { type: 'hyrox_training', notes: 'no run here', runningDistance: null };
   assert.deepEqual(ensureRunLines([], session), []);
 });
+
+test('ensureRunLines uses pasted Strava laps on a non-running session type', () => {
+  const session = {
+    type: 'hyrox_training',
+    notes: 'Avg pace: 5:09/km\nCalories: 378 kcal\n\nLaps (2):\n  Lap 1: 1000m @ 5:24/km (5:24) · 132 bpm\n  Lap 2: 535m @ 4:50/km (2:35) · 156 bpm\n\n\neasy run, then 100 thrusters DB 10 kg unbroken',
+  };
+  const thrusters = { part: 'main', exercise: 'Thruster', intervals: 1, reps: 100, weightKg: 10 };
+  const result = ensureRunLines([thrusters], session);
+  assert.equal(result.length, 3);
+  assert.deepEqual(result[0], thrusters);
+  assert.deepEqual(result.slice(1).map(l => [l.distanceM, l.timeSec]), [[1000, 324], [535, 155]]);
+});
+
+test('ensureRunLines replaces a distance-less run line with Strava laps', () => {
+  const session = { type: 'hyrox_training', notes: 'Laps (1):\n  Lap 1: 1000m @ 5:00/km (5:00)' };
+  const result = ensureRunLines([{ part: 'main', exercise: 'Run', intervals: 1, notes: 'easy run' }], session);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].distanceM, 1000);
+});

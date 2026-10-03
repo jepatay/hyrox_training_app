@@ -530,6 +530,12 @@ Return:
 
 Only include what is explicitly mentioned. Return empty lines array if nothing structured is mentioned.
 
+STRAVA / WATCH DATA — notes often contain a pasted Strava activity block. Read it as follows:
+- Each "Lap N: <distance>m @ <pace>/km (<m:ss>) · <bpm>" row is one Run line (part "main", unless the text says it was a warm-up/cool-down): distanceM = the lap distance, timeSec = the time in parentheses, intervals 1. Output one line per lap.
+- Each "km N: <m:ss>/km" row under "Km splits:" is one Run line with distanceM 1000 and timeSec = that pace.
+- Summary stats ("Avg pace", "Avg HR", "Avg cadence", "Elevation", "Calories: N kcal", "PRs in this run") are NOT movements — never output a line for them. In particular "Calories: N kcal" is energy burned, NOT a calorie count on a cardio machine.
+- A short free-text description of the same run (e.g. "easy run") describes those laps — don't add a separate Run line for it.
+
 ROUND-COUNTING — apply the same rule regardless of section: COUNT how many times a block of movements actually appears (explicit count, numbered rounds, or repeated back-to-back blocks with no count stated) and reflect it in "intervals" with the PER-INTERVAL numbers, never a pre-multiplied total. If a movement's weight changes partway through repeated blocks, output SEPARATE lines per weight bracket.`;
   return chatJson(prompt, 1400);
 }
@@ -706,18 +712,26 @@ export function parseStravaLapsFromNotes(notes) {
   return [];
 }
 
-// Adds a run line to extractionV2 lines when a running session's extraction
-// didn't find one — never overwrites a run the extraction DID find (which
-// may carry better per-interval pace data than a lap/split text parse would).
+// Adds run lines to extractionV2 lines when extraction didn't find a
+// measurable run — never overwrites a run the extraction DID find with a
+// distance (which may carry better per-interval pace data than a lap/split
+// text parse would). Strava lap/split text is real recorded data, so it's
+// used for any session type — a Strava block pasted into a manually logged
+// hyrox_training session counts too. A run line with no distance (e.g. the
+// model reading "easy run" as a bare mention) is replaced by the laps.
 export function ensureRunLines(lines, session) {
-  const hasRun = (lines || []).some(l => /run/i.test(l.exercise || ''));
-  if (hasRun || session?.type !== 'running') return lines || [];
+  const isRun = l => /run/i.test(l.exercise || '');
+  const hasMeasuredRun = (lines || []).some(l => isRun(l) && l.distanceM);
+  if (hasMeasuredRun) return lines || [];
+  const withoutBareRuns = (lines || []).filter(l => !isRun(l));
 
-  const fromLaps = parseStravaLapsFromNotes(session.notes);
-  if (fromLaps.length) return [...(lines || []), ...fromLaps];
+  const fromLaps = parseStravaLapsFromNotes(session?.notes);
+  if (fromLaps.length) return [...withoutBareRuns, ...fromLaps];
+
+  if (session?.type !== 'running') return lines || [];
 
   if (session?.runningDistance) {
-    return [...(lines || []), {
+    return [...withoutBareRuns, {
       part: 'main', exercise: 'Run', intervals: 1,
       distanceM: session.runningDistance * 1000,
       timeSec: session.duration ? session.duration * 60 : null,
