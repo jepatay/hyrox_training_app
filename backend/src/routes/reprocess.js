@@ -165,6 +165,45 @@ router.get('/report', async (_req, res) => {
   }
 });
 
+// POST self-heal: extract + score recent sessions that were saved but never
+// scored, so Home fixes itself without anyone running a reprocess. Each
+// session is attempted at most once a day (autoScoreAttemptedAt) so one
+// whose notes genuinely hold nothing scorable doesn't cost an AI call on
+// every Home load. Batched; Home calls again while `remaining` > 0.
+router.post('/score-missing', async (req, res) => {
+  try {
+    const { days = 180, limit = 8 } = req.body || {};
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+    const snap = await collections.sessions().where('date', '>=', cutoffStr).get();
+    const candidates = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(s => !s.v2 && s.status !== 'planned' && (s.notes?.trim() || s.runningDistance))
+      .filter(s => !s.autoScoreAttemptedAt || Date.parse(s.autoScoreAttemptedAt) < dayAgo)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+    const batch = candidates.slice(0, limit);
+    let scored = 0;
+    const failed = [];
+    for (const s of batch) {
+      await collections.sessions().doc(s.id).update({ autoScoreAttemptedAt: new Date().toISOString() });
+      try {
+        if (await extractAndScoreSession(s.id)) scored++;
+      } catch (err) {
+        console.error(`score-missing failed for session ${s.id}:`, err);
+        failed.push({ id: s.id, date: s.date });
+      }
+    }
+    res.json({ attempted: batch.length, scored, failed, remaining: candidates.length - batch.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to score missing sessions' });
+  }
+});
+
 // POST re-extract from the current notes AND score one session — the fix
 // for a session that was saved but never scored (Home's breakdown lists
 // these as "not counted").
