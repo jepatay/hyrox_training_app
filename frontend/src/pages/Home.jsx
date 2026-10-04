@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sessionsApi, draftsApi, dailyTotalsApi } from '@/lib/api';
 import { Plus, Mic } from 'lucide-react';
+import StationBreakdown from '@/components/StationBreakdown';
 
 // The 9 race-station boxes, in the same order as the design and as
 // scoring.js's CATEGORY_KEYS (minus `core`, which gets its own wide box).
@@ -59,6 +60,7 @@ export default function Home() {
   const [sessions, setSessions] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [breakdown, setBreakdown] = useState(null);
 
   useEffect(() => { load(); }, []);
 
@@ -90,8 +92,8 @@ export default function Home() {
     const prevFrom = isoDaysAgo(windowDays * 2 - 1);
 
     return {
-      current: sumWindow(dailyTotals, curFrom, todayStr),
-      previous: sumWindow(dailyTotals, prevFrom, prevTo),
+      current: { ...sumWindow(dailyTotals, curFrom, todayStr), from: curFrom, to: todayStr },
+      previous: { ...sumWindow(dailyTotals, prevFrom, prevTo), from: prevFrom, to: prevTo },
     };
   }, [dailyTotals, windowDays]);
 
@@ -126,7 +128,7 @@ export default function Home() {
               key={d}
               onClick={() => setWindowDays(d)}
               className={`min-h-[44px] min-w-[44px] px-2 rounded-full border-2 border-[#F3F1EB] font-['Barlow_Condensed',sans-serif] font-semibold text-[17px] ${
-                windowDays === d ? 'bg-[#26292D] text-[#0E0F11]' : 'bg-transparent text-[#F3F1EB]'
+                windowDays === d ? 'bg-[#F3F1EB] text-[#0E0F11]' : 'bg-transparent text-[#F3F1EB]'
               }`}
             >
               {d}d
@@ -146,14 +148,14 @@ export default function Home() {
               const barPct = Math.min(100, Math.round((value / maxStationRE) * 100));
               const trendColor = trend.pct > 0 ? 'text-[#5ED28C]' : trend.pct < 0 ? 'text-[#FF8F86]' : 'text-[#A6A49C]';
               return (
-                <div key={b.key} className="bg-[#1A1C1F] rounded-xl p-2.5 flex flex-col gap-1.5">
+                <button key={b.key} onClick={() => setBreakdown(b)} className="text-left text-[#F3F1EB] bg-[#1A1C1F] rounded-xl p-2.5 flex flex-col gap-1.5">
                   <div className="font-['Barlow_Condensed',sans-serif] font-semibold text-[15px] tracking-wide uppercase text-[#A6A49C]">{b.label}</div>
                   <div className="font-['Barlow_Condensed',sans-serif] font-bold text-[34px] leading-none">
                     {value.toFixed(1)}<span className="text-[13px] font-semibold text-[#A6A49C] ml-1">RE</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-[#33373B]"><div className="h-1.5 rounded-full bg-[#F5C400]" style={{ width: `${barPct}%` }} /></div>
                   <div className={`text-xs font-semibold ${trendColor}`}>{trend.text} <span className="font-normal text-[#A6A49C]">vs prev</span></div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -194,6 +196,17 @@ export default function Home() {
             )}
           </div>
         </>
+      )}
+      {breakdown && (
+        <StationBreakdown
+          category={breakdown.key}
+          label={breakdown.label}
+          windows={[
+            { title: `Last ${windowDays}d`, from: current.from, to: current.to },
+            { title: `Previous ${windowDays}d`, from: previous.from, to: previous.to },
+          ]}
+          onClose={() => setBreakdown(null)}
+        />
       )}
     </div>
   );

@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import { collections, docToObj } from '../services/firebase.js';
 import { listLibrary, matchExercise } from '../services/exerciseLibrary.js';
 import { getStationReferences } from '../services/stationReferences.js';
-import { extractExercisesFromNotesV2, ensureRunLines } from '../services/claude.js';
+import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary } from '../services/exerciseLibrary.js';
 import { scoreSession, linesFromExtractionV2 } from '../services/scoring.js';
 import { recomputeDailyTotal, recomputeAllDailyTotals } from '../services/dailyTotals.js';
@@ -29,6 +29,13 @@ async function allSessions() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// No extraction yet, or one that came back empty for a session that has
+// notes — almost always a failed/truncated AI reply rather than a genuinely
+// empty session, so it's retried instead of being skipped forever.
+function needsExtraction(s) {
+  return !s.extractionV2 || (s.notes?.trim() && !s.extractionV2.lines?.length);
+}
+
 // GET dry run (section 8 step 2) — counts only, no writes. Always safe to
 // call, including repeatedly, to check progress of the extraction/scoring
 // passes below.
@@ -49,7 +56,7 @@ router.get('/dry-run', async (_req, res) => {
       sessionsTotal: sessions.length,
       withNotes: sessions.filter(s => s.notes?.trim()).length,
       importedFromStrava: sessions.filter(s => s.stravaActivityId).length,
-      needingExtractionV2: sessions.filter(s => (s.notes?.trim() || s.runningDistance) && !s.extractionV2).length,
+      needingExtractionV2: sessions.filter(s => (s.notes?.trim() || s.runningDistance) && needsExtraction(s)).length,
       needingScoring: sessions.filter(s => s.extractionV2 && !s.v2).length,
       distinctExerciseNames: names.size,
       namesNotInLibrary: namesNotInLibrary.length,
@@ -72,7 +79,7 @@ router.post('/extract', async (req, res) => {
     const { limit = 20, force = false } = req.body || {};
     const [sessions, library] = await Promise.all([allSessions(), listLibrary()]);
     const pending = sessions
-      .filter(s => (s.notes?.trim() || s.runningDistance) && (force || !s.extractionV2))
+      .filter(s => (s.notes?.trim() || s.runningDistance) && (force || needsExtraction(s)))
       .slice(0, limit);
 
     const results = { processed: 0, errors: [] };
@@ -81,7 +88,10 @@ router.post('/extract', async (req, res) => {
         const raw = session.notes?.trim()
           ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
           : { lines: [] };
-        const lines = ensureRunLines(raw?.lines, session).filter(l => l.exercise);
+        if (!raw) throw new Error('AI extraction failed — will retry on the next pass');
+        const lines = ensureRunLines(raw.lines, session)
+          .filter(l => l.exercise)
+          .map(l => ({ ...l, part: normalizeV2Part(l.part) }));
         // Same `library` array reused (and mutated in place with any new
         // pending entries) across every session in this batch — one fetch
         // for up to `limit` sessions instead of one per session.
@@ -100,7 +110,7 @@ router.post('/extract', async (req, res) => {
         results.errors.push({ sessionId: session.id, error: err.message });
       }
     }
-    results.remaining = sessions.filter(s => (s.notes?.trim() || s.runningDistance) && (force || !s.extractionV2)).length - results.processed;
+    results.remaining = sessions.filter(s => (s.notes?.trim() || s.runningDistance) && (force || needsExtraction(s))).length - results.processed;
     res.json(results);
   } catch (err) {
     console.error(err);
