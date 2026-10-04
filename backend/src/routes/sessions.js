@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
-import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, extractExercisesFromNotesV2, renderExtractionSummaryV2, parseExtractionSummaryV2, ensureRunLines } from '../services/claude.js';
+import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, extractExercisesFromNotesV2, renderExtractionSummaryV2, parseExtractionSummaryV2, ensureRunLines, normalizeV2Part } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
 import { recomputeDailyTotal } from '../services/dailyTotals.js';
 import admin from 'firebase-admin';
@@ -184,10 +184,15 @@ router.post('/:id/extract-v2', async (req, res) => {
     const raw = session.notes?.trim()
       ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
       : { lines: [] };
+    if (!raw) {
+      return res.status(502).json({ error: "Couldn't read your session right now — please try again." });
+    }
     // Filtered before resolving so `lines` and `resolvedLines` stay
     // index-aligned — resolveExercisesAgainstLibrary silently drops any
     // entry with no name.
-    const lines = ensureRunLines(raw?.lines, session).filter(l => l.exercise);
+    const lines = ensureRunLines(raw.lines, session)
+      .filter(l => l.exercise)
+      .map(l => ({ ...l, part: normalizeV2Part(l.part) }));
     const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
       lines.map(l => ({ ...l, name: l.exercise }))
     );
