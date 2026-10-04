@@ -28,7 +28,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 // Health check (public)
-app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', commit: (process.env.RENDER_GIT_COMMIT || 'unknown').slice(0, 7), timestamp: new Date().toISOString() }));
 
 // All API routes protected by token auth
 app.use('/api', authMiddleware);

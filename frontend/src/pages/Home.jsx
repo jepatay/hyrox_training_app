@@ -62,6 +62,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [breakdown, setBreakdown] = useState(null);
   const [healing, setHealing] = useState(false);
+  const [healResult, setHealResult] = useState(null);
 
   useEffect(() => { load().then(healMissingScores); }, []);
 
@@ -69,20 +70,25 @@ export default function Home() {
   // bugs) count 0 here. Ask the backend to score them in batches, then
   // reload so the boxes reflect them. Best-effort and silent on failure.
   async function healMissingScores() {
-    let anyScored = false;
+    let scored = 0;
+    let failed = 0;
     try {
       for (let i = 0; i < 5; i++) {
         setHealing(true);
         const r = await reprocessApi.scoreMissing();
-        if (r.scored) anyScored = true;
+        scored += r.scored || 0;
+        failed += r.failed?.length || 0;
         if (!r.remaining || !r.attempted) break;
       }
-    } catch {
-      // ignore — the breakdown view still lists anything not counted
+      if (scored || failed) setHealResult({ scored, failed });
+    } catch (err) {
+      // Shown, not swallowed — a silent failure here is what made missing
+      // scores so hard to diagnose.
+      setHealResult({ error: err.message });
     } finally {
       setHealing(false);
     }
-    if (anyScored) load();
+    if (scored) load();
   }
 
   async function load() {
@@ -160,6 +166,13 @@ export default function Home() {
 
       {healing && (
         <div className="text-[13px] text-[#A6A49C]">Scoring sessions that weren't counted yet…</div>
+      )}
+      {healResult && (
+        <div className={`text-[13px] ${healResult.error || healResult.failed ? 'text-[#FF8F86]' : 'text-[#5ED28C]'}`}>
+          {healResult.error
+            ? `Couldn't score missing sessions: ${healResult.error}`
+            : `Scored ${healResult.scored} session${healResult.scored === 1 ? '' : 's'} that weren't counted${healResult.failed ? ` · ${healResult.failed} couldn't be read` : ''}.`}
+        </div>
       )}
 
       {loading ? (
