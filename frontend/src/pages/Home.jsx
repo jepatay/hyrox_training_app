@@ -206,6 +206,7 @@ export default function Home() {
             { title: `Previous ${windowDays}d`, from: previous.from, to: previous.to },
           ]}
           onClose={() => setBreakdown(null)}
+          onScored={load}
         />
       )}
     </div>

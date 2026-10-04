@@ -147,6 +147,7 @@ export const reprocessApi = {
   rebuildDailyTotals: () => api.post('/api/reprocess/rebuild-daily-totals', {}),
   report: () => api.get('/api/reprocess/report'),
   rescoreSession: (id) => api.post(`/api/reprocess/sessions/${id}/rescore`, {}),
+  extractAndScoreSession: (id) => api.post(`/api/reprocess/sessions/${id}/extract-and-score`, {}),
 };
 
 export const stravaApi = {

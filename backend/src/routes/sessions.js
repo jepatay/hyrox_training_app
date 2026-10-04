@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { rebuildWeekDigest } from '../services/trainingLoad.js';
-import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, extractExercisesFromNotesV2, renderExtractionSummaryV2, parseExtractionSummaryV2, ensureRunLines, normalizeV2Part } from '../services/claude.js';
+import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, renderExtractionSummaryV2, parseExtractionSummaryV2 } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
 import { recomputeDailyTotal } from '../services/dailyTotals.js';
+import { extractV2ForSession, extractAndScoreSession } from '../services/v2Pipeline.js';
 import admin from 'firebase-admin';
 
 const router = Router();
 
-async function runBackgroundJobs(session, { notesChanged = false, isEdit = false } = {}) {
+async function runBackgroundJobs(session, { notesChanged = false, isEdit = false, autoScore = true } = {}) {
   if (!session?.date) return;
+  // v2 score (what Home and Objectives read). Skipped when the caller is the
+  // Log Session review flow (autoScore: false), which extracts and scores
+  // itself after the athlete confirms — a background run there would race
+  // and could overwrite their corrections.
+  if (autoScore && notesChanged) {
+    await extractAndScoreSession(session.id).catch(err => console.error('Auto v2 scoring failed:', err));
+  }
   await rebuildWeekDigest(session.date);
   // dailyTotals is always recomputed from scratch, never incremented — safe
   // to call unconditionally even before this session has a `v2` yet.
@@ -181,32 +189,13 @@ router.post('/:id/extract-v2', async (req, res) => {
       return res.json({ extractionV2: null, summaryText: '' });
     }
 
-    const raw = session.notes?.trim()
-      ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
-      : { lines: [] };
-    if (!raw) {
+    let extractionV2;
+    try {
+      extractionV2 = await extractV2ForSession(session);
+    } catch {
       return res.status(502).json({ error: "Couldn't read your session right now — please try again." });
     }
-    // Filtered before resolving so `lines` and `resolvedLines` stay
-    // index-aligned — resolveExercisesAgainstLibrary silently drops any
-    // entry with no name.
-    const lines = ensureRunLines(raw.lines, session)
-      .filter(l => l.exercise)
-      .map(l => ({ ...l, part: normalizeV2Part(l.part) }));
-    const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
-      lines.map(l => ({ ...l, name: l.exercise }))
-    );
-    // resolveExercisesAgainstLibrary works off `name` (v1 field name) but
-    // stamps `libraryKey` back on — carry that onto the v2 line shape
-    // without losing any v1 field it might also read.
-    const finalLines = lines.map((l, i) => ({ ...l, libraryKey: resolvedLines[i]?.libraryKey }));
     const library = await listLibrary();
-
-    const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
-    await collections.sessions().doc(req.params.id).update({
-      extractionV2,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
     res.json({ extractionV2, summaryText: renderExtractionSummaryV2(extractionV2, library) });
   } catch (err) {
     console.error(err);
@@ -245,7 +234,7 @@ router.post('/', async (req, res) => {
     const {
       date, type, status, isClass, weightVest, weightVestKg, location, equipment,
       exercises, runningDistance, intervals, weights, duration,
-      rpe, volume, notes,
+      rpe, volume, notes, autoScore = true,
     } = req.body;
 
     if (!date || !type) {
@@ -288,7 +277,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(created);
 
     // Background: rebuild weekly digest + extract exercise data from notes
-    runBackgroundJobs(created, { notesChanged: true }).catch(err => console.error('Background jobs failed (create):', err));
+    runBackgroundJobs(created, { notesChanged: true, autoScore }).catch(err => console.error('Background jobs failed (create):', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create session' });
@@ -302,6 +291,8 @@ router.put('/:id', async (req, res) => {
     const updates = { ...req.body, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     delete updates.id;
     delete updates.createdAt;
+    const autoScore = updates.autoScore !== false;
+    delete updates.autoScore;
     // Recalculate sessionLoad whenever rpe or duration is present in the update
     const rpeNum = updates.rpe ? Number(updates.rpe) : null;
     const durNum = updates.duration ? Number(updates.duration) : null;
@@ -314,7 +305,7 @@ router.put('/:id', async (req, res) => {
     res.json(updated);
 
     // Background: rebuild weekly digest, re-extract exercises and refresh station scores if notes changed
-    runBackgroundJobs(updated, { notesChanged, isEdit: true }).catch(err => console.error('Background jobs failed (update):', err));
+    runBackgroundJobs(updated, { notesChanged, isEdit: true, autoScore }).catch(err => console.error('Background jobs failed (update):', err));
     // If the date itself moved, the old date's total no longer includes this
     // session — runBackgroundJobs above only recomputes the new date.
     if (before?.date && updated?.date && before.date !== updated.date) {
