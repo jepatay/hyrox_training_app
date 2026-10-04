@@ -531,12 +531,24 @@ Return:
 Only include what is explicitly mentioned. Return empty lines array if nothing structured is mentioned.
 
 ROUND-COUNTING — apply the same rule regardless of section: COUNT how many times a block of movements actually appears (explicit count, numbered rounds, or repeated back-to-back blocks with no count stated) and reflect it in "intervals" with the PER-INTERVAL numbers, never a pre-multiplied total. If a movement's weight changes partway through repeated blocks, output SEPARATE lines per weight bracket.`;
-  return chatJson(prompt, 1400);
+  // A long session easily runs past 1,400 output tokens; a truncated reply
+  // fails JSON.parse and comes back null, which used to look like "nothing
+  // logged" and left the review screen blank.
+  return chatJson(prompt, 4000);
 }
 
 const V2_PART_ORDER = ['warmup', 'main', 'finisher', 'core', 'cooldown'];
 const V2_PART_LABEL = { warmup: 'Warm-up', main: 'Main', finisher: 'Then', core: 'Core', cooldown: 'Cool-down' };
 const V2_HEADER_TO_PART = { 'warm-up': 'warmup', main: 'main', then: 'finisher', core: 'core', 'cool-down': 'cooldown' };
+
+// The model doesn't always echo the part tag exactly ("Main", "warm-up",
+// missing) — anything unrecognised falls back to 'main' so no line is
+// silently dropped by code that groups strictly by V2_PART_ORDER.
+export function normalizeV2Part(part) {
+  const p = String(part || '').trim().toLowerCase();
+  if (V2_PART_ORDER.includes(p)) return p;
+  return V2_HEADER_TO_PART[p] || (p === 'warm up' ? 'warmup' : p === 'cool down' ? 'cooldown' : 'main');
+}
 
 function formatMinSec(totalSec) {
   const m = Math.floor(totalSec / 60);

@@ -6,6 +6,12 @@ import { ArrowLeft, Plus } from 'lucide-react';
 
 const PART_ORDER = ['warmup', 'main', 'finisher', 'core', 'cooldown'];
 const PART_LABEL = { warmup: 'Warm-up', main: 'Main', finisher: 'Then', core: 'Core', cooldown: 'Cool-down' };
+const HEADER_TO_PART = { 'warm-up': 'warmup', 'warm up': 'warmup', then: 'finisher', 'cool-down': 'cooldown', 'cool down': 'cooldown' };
+// Any part tag we don't recognise lands under Main rather than vanishing.
+function normalizePart(part) {
+  const p = String(part || '').trim().toLowerCase();
+  return PART_ORDER.includes(p) ? p : HEADER_TO_PART[p] || 'main';
+}
 const CATEGORY_LABELS = {
   run: 'Run', skierg: 'SkiErg', sled_push: 'Sled Push', sled_pull: 'Sled Pull',
   burpee_broad_jump: 'Burpee BJ', row: 'Row', farmers_carry: 'Farmers',
@@ -115,9 +121,10 @@ export default function LogSession() {
   }
 
   const linesByPart = PART_ORDER.reduce((acc, p) => {
-    acc[p] = (extractionV2?.lines || []).filter(l => l.part === p);
+    acc[p] = (extractionV2?.lines || []).filter(l => normalizePart(l.part) === p);
     return acc;
   }, {});
+  const hasLines = (extractionV2?.lines || []).length > 0;
   const pendingLines = (extractionV2?.lines || []).filter(l => {
     const entry = l.libraryKey ? libraryByKey.get(l.libraryKey) : null;
     return entry?.status === 'pending';
@@ -220,6 +227,13 @@ export default function LogSession() {
             </>
           ) : (
             <>
+              {!hasLines && (
+                <div className="p-4 rounded-lg bg-[#1A1C1F] text-[15px] leading-snug">
+                  We couldn't pick out any exercises from what you wrote. Tap <b>Edit as text</b> to type them as
+                  lines (e.g. <i>Wall Balls: 3 × 20 reps @ 9 kg</i>), or go back and add more detail.
+                </div>
+              )}
+
               {PART_ORDER.filter(p => linesByPart[p].length).map(p => (
                 <div key={p} className="flex flex-col gap-1.5">
                   <div className="font-['Barlow_Condensed',sans-serif] font-semibold text-sm tracking-wider uppercase text-[#A6A49C]">{PART_LABEL[p]}</div>
@@ -262,7 +276,7 @@ export default function LogSession() {
 
               <div className="flex-grow" />
               <button
-                onClick={handleConfirmAndScore} disabled={busy}
+                onClick={handleConfirmAndScore} disabled={busy || !hasLines}
                 className="min-h-[56px] border-2 border-[#F5C400] rounded-xl bg-[#F5C400] text-[#0E0F11] font-['Barlow_Condensed',sans-serif] font-bold text-xl tracking-wide uppercase disabled:opacity-60"
               >
                 {busy ? 'Scoring...' : 'Confirm and score'}
@@ -272,13 +286,35 @@ export default function LogSession() {
         </>
       )}
 
+      {step === 3 && !v2 && (
+        <>
+          <h1 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-4xl leading-none">Session saved</h1>
+          <p className="text-[15px] leading-snug text-[#A6A49C]">Your notes are saved, but there was nothing to score yet. Go back to add exercises, or open it later from the Training Log.</p>
+          <div className="flex-grow" />
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => navigate('/')}
+              className="flex-grow min-h-[56px] border-2 border-[#F5C400] rounded-xl bg-[#F5C400] text-[#0E0F11] font-['Barlow_Condensed',sans-serif] font-bold text-xl tracking-wide uppercase"
+            >
+              Done
+            </button>
+            <button
+              onClick={() => setStep(2)}
+              className="flex-grow min-h-[56px] border-2 border-[#F3F1EB] rounded-xl bg-transparent text-[#F3F1EB] font-['Barlow_Condensed',sans-serif] font-bold text-xl tracking-wide uppercase"
+            >
+              Back
+            </button>
+          </div>
+        </>
+      )}
+
       {step === 3 && v2 && (
         <>
           <div className="flex justify-between items-end">
             <h1 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-4xl leading-none">Session scored</h1>
             <div className="text-right">
               <div className="font-['Barlow_Condensed',sans-serif] font-bold text-[44px] leading-none">
-                {v2.sessionLoadRE.toFixed(2)}<span className="text-base font-semibold text-[#A6A49C] ml-1">RE</span>
+                {(v2.sessionLoadRE || 0).toFixed(2)}<span className="text-base font-semibold text-[#A6A49C] ml-1">RE</span>
               </div>
               <div className="text-xs text-[#A6A49C]">session load</div>
             </div>
@@ -286,7 +322,7 @@ export default function LogSession() {
           <p className="text-[13px] leading-snug text-[#A6A49C]">Full bar = 1.00 RE, one race of that station. Each line shows the arithmetic.</p>
 
           {CATEGORY_ORDER.map(cat => {
-            const value = v2.re[cat] || 0;
+            const value = v2.re?.[cat] || 0;
             const contributingLines = (v2.lines || []).filter(l => l.credits?.[cat]);
             if (!contributingLines.length) {
               return (
