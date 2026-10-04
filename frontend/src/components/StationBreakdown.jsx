@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { sessionsApi, exerciseLibraryApi } from '@/lib/api';
+import { sessionsApi, exerciseLibraryApi, reprocessApi } from '@/lib/api';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 // Audit view for one Home station box: every scored line that credited this
@@ -7,15 +7,31 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 // sessions in those windows that contribute nothing because they were never
 // scored (or their extraction came back empty) — the usual reason a trend %
 // looks wrong.
-export default function StationBreakdown({ category, label, windows, onClose }) {
+export default function StationBreakdown({ category, label, windows, onClose, onScored }) {
   const [sessions, setSessions] = useState(null);
   const [library, setLibrary] = useState([]);
+  const [fixing, setFixing] = useState(null);
 
-  useEffect(() => {
-    Promise.all([sessionsApi.list(), exerciseLibraryApi.list().catch(() => [])])
+  function load() {
+    return Promise.all([sessionsApi.list(), exerciseLibraryApi.list().catch(() => [])])
       .then(([s, lib]) => { setSessions(s || []); setLibrary(lib || []); })
       .catch(() => setSessions([]));
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
+
+  // Extract + score each not-counted session one at a time (each is an AI
+  // call), then reload this view and tell Home to refresh its totals.
+  async function scoreMissing(list) {
+    let failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      setFixing({ done: i, total: list.length, failed });
+      try { await reprocessApi.extractAndScoreSession(list[i].s.id); } catch { failed++; }
+    }
+    setFixing({ done: list.length, total: list.length, failed });
+    await load();
+    onScored?.();
+    setFixing(f => (f?.failed ? f : null));
+  }
 
   const labelFor = new Map(library.map(e => [e.key, e.label]));
 
@@ -44,6 +60,27 @@ export default function StationBreakdown({ category, label, windows, onClose }) 
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#0E0F11] text-[#F3F1EB] border-[#33373B] max-w-lg w-[calc(100%-32px)] p-4">
         <h2 className="m-0 font-['Barlow_Condensed',sans-serif] font-bold text-2xl">{label} — where the number comes from</h2>
+        {sessions && (() => {
+          const missing = windows.flatMap(w => windowData(w).unscored);
+          if (!missing.length && !fixing) return null;
+          return (
+            <div className="flex flex-col gap-1.5">
+              <button
+                disabled={!!fixing && fixing.done < fixing.total}
+                onClick={() => scoreMissing(missing)}
+                className="min-h-[48px] rounded-xl bg-[#F5C400] text-[#0E0F11] font-['Barlow_Condensed',sans-serif] font-bold text-lg tracking-wide uppercase disabled:opacity-60"
+              >
+                {fixing && fixing.done < fixing.total
+                  ? `Scoring ${fixing.done + 1} of ${fixing.total}...`
+                  : `Score the ${missing.length} not-counted session${missing.length === 1 ? '' : 's'}`}
+              </button>
+              {fixing?.failed > 0 && fixing.done === fixing.total && (
+                <div className="text-xs text-[#FF8F86]">{fixing.failed} couldn't be read — try again, or open them in the Training Log.</div>
+              )}
+            </div>
+          );
+        })()}
+
         {!sessions ? (
           <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-[#F5C400] border-t-transparent rounded-full animate-spin" /></div>
         ) : (

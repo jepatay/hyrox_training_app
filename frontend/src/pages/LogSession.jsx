@@ -67,11 +67,13 @@ export default function LogSession() {
       if (!id) {
         const created = await sessionsApi.create({
           date, isClass, weightVestKg, type: 'hyrox_training', status: 'completed', notes: notesInput,
+          // This flow extracts and scores itself after the review step.
+          autoScore: false,
         });
         id = created.id;
         setSessionId(id);
       } else {
-        await sessionsApi.update(id, { notes: notesInput });
+        await sessionsApi.update(id, { notes: notesInput, autoScore: false });
       }
       const result = await sessionsApi.extractV2(id);
       setExtractionV2(result.extractionV2);

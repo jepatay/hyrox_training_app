@@ -3,22 +3,10 @@ import admin from 'firebase-admin';
 import { collections, docToObj } from '../services/firebase.js';
 import { listLibrary, matchExercise } from '../services/exerciseLibrary.js';
 import { getStationReferences } from '../services/stationReferences.js';
-import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part } from '../services/claude.js';
-import { resolveExercisesAgainstLibrary } from '../services/exerciseLibrary.js';
-import { scoreSession, linesFromExtractionV2 } from '../services/scoring.js';
-import { recomputeDailyTotal, recomputeAllDailyTotals } from '../services/dailyTotals.js';
+import { recomputeAllDailyTotals } from '../services/dailyTotals.js';
+import { getActiveObjective, extractV2ForSession, scoreOneSession, extractAndScoreSession } from '../services/v2Pipeline.js';
 
 const router = Router();
-
-// Section 8 step 3: which objective's targetSplits (if any) is "active" for
-// the pace factor's reference lookup — same "nearest upcoming" convention
-// reports.js already uses elsewhere in this app.
-async function getActiveObjective() {
-  const today = new Date().toISOString().slice(0, 10);
-  const snap = await collections.objectives().orderBy('date', 'asc').get();
-  const objectives = snap.docs.map(docToObj).filter(Boolean);
-  return objectives.find(o => o.date >= today) || null;
-}
 
 // Newest first — the extraction pass is batched (20 at a time), and Home
 // only ever shows the most recent sessions, so without this ordering a
@@ -85,25 +73,10 @@ router.post('/extract', async (req, res) => {
     const results = { processed: 0, errors: [] };
     for (const session of pending) {
       try {
-        const raw = session.notes?.trim()
-          ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
-          : { lines: [] };
-        if (!raw) throw new Error('AI extraction failed — will retry on the next pass');
-        const lines = ensureRunLines(raw.lines, session)
-          .filter(l => l.exercise)
-          .map(l => ({ ...l, part: normalizeV2Part(l.part) }));
         // Same `library` array reused (and mutated in place with any new
         // pending entries) across every session in this batch — one fetch
         // for up to `limit` sessions instead of one per session.
-        const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
-          lines.map(l => ({ ...l, name: l.exercise })), library
-        );
-        const finalLines = lines.map((l, i) => ({ ...l, libraryKey: resolvedLines[i]?.libraryKey }));
-        const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
-        await collections.sessions().doc(session.id).update({
-          extractionV2,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await extractV2ForSession(session, library);
         results.processed++;
       } catch (err) {
         console.error(`Reprocess extract failed for session ${session.id}:`, err);
@@ -122,28 +95,6 @@ router.post('/extract', async (req, res) => {
 // per section 8 step 8 for a session with nothing to score) and recomputing
 // that day's dailyTotal. Shared by the bulk scoring pass and the
 // per-session Rescore action.
-async function scoreOneSession(session, library, references, objective) {
-  const hasExtraction = session.extractionV2?.lines?.length > 0;
-  if (!hasExtraction) {
-    await collections.sessions().doc(session.id).update({ v2: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-    await recomputeDailyTotal(session.date);
-    return null;
-  }
-  const scoringLines = linesFromExtractionV2(session.extractionV2.lines, library);
-  const scored = scoreSession(scoringLines, library, references, objective, { weightVestKg: session.weightVestKg });
-  const v2 = {
-    version: 1,
-    lines: scored.lines,
-    re: scored.re,
-    sessionLoadRE: scored.sessionLoadRE,
-    computedAt: new Date().toISOString(),
-    libraryVersion: library.length,
-  };
-  await collections.sessions().doc(session.id).update({ v2, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-  await recomputeDailyTotal(session.date);
-  return v2;
-}
-
 // POST scoring pass (section 8 step 5) — pure and instant per session (no
 // LLM call), so this re-runs in full every time a weight, a Station
 // Reference or a limit changes; only extraction is ever cached long-term.
@@ -211,6 +162,19 @@ router.get('/report', async (_req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to build report' });
+  }
+});
+
+// POST re-extract from the current notes AND score one session — the fix
+// for a session that was saved but never scored (Home's breakdown lists
+// these as "not counted").
+router.post('/sessions/:id/extract-and-score', async (req, res) => {
+  try {
+    const v2 = await extractAndScoreSession(req.params.id);
+    res.json({ v2 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Failed to score session' });
   }
 });
 

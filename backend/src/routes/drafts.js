@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { collections, docToObj } from '../services/firebase.js';
 import { extractDraftEntryFromImage, extractSessionFromDraft } from '../services/claude.js';
 import admin from 'firebase-admin';
+import { extractAndScoreSession } from '../services/v2Pipeline.js';
 
 const router = Router();
 
@@ -247,6 +248,8 @@ router.post('/:date/convert', async (req, res) => {
     });
 
     res.json(saved);
+    // Background: score the converted session so Home counts it.
+    extractAndScoreSession(saved.id).catch(err => console.error('Draft auto-score failed:', err));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to convert draft' });

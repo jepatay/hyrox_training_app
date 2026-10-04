@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import admin from 'firebase-admin';
+import { extractAndScoreSessions } from '../services/v2Pipeline.js';
 
 const router = Router();
 
@@ -354,6 +355,7 @@ router.post('/sync', async (_req, res) => {
     );
 
     let imported = 0;
+    const toScore = [];
     let merged = 0;
     for (const act of activities) {
       if (blocklist.has(act.id)) continue;
@@ -411,11 +413,12 @@ router.post('/sync', async (_req, res) => {
         // activity on the same date+type should create its own session
         // rather than merging into this one again.
         manualSessionsByDateType.delete(dateTypeKey);
+        toScore.push(existingManual.id);
         merged++;
         continue;
       }
 
-      await collections.sessions().add({
+      const addedRef = await collections.sessions().add({
         stravaActivityId: act.id,
         stravaActivityName: act.name,
         syncedFromStrava: true,
@@ -430,6 +433,7 @@ router.post('/sync', async (_req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+      toScore.push(addedRef.id);
       imported++;
     }
 
@@ -440,6 +444,8 @@ router.post('/sync', async (_req, res) => {
     );
 
     res.json({ imported, merged, total: activities.length });
+    // Background: score what was just imported/merged so Home counts it.
+    extractAndScoreSessions(toScore, 'Strava auto-score');
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Sync failed' });
@@ -458,6 +464,7 @@ router.post('/backfill-notes', async (_req, res) => {
     const toUpdate = snap.docs.filter(d => d.data().stravaActivityId);
 
     let updated = 0;
+    const rescoreIds = [];
     for (const doc of toUpdate) {
       const { stravaActivityId } = doc.data();
       try {
@@ -487,6 +494,7 @@ router.post('/backfill-notes', async (_req, res) => {
             ...(rpe != null && { rpe }),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
+          rescoreIds.push(doc.id);
           updated++;
         }
       } catch (err) {
@@ -495,6 +503,7 @@ router.post('/backfill-notes', async (_req, res) => {
     }
 
     res.json({ updated, total: toUpdate.length });
+    extractAndScoreSessions(rescoreIds, 'Strava backfill auto-score');
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Backfill failed' });
