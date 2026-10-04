@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sessionsApi, draftsApi, dailyTotalsApi } from '@/lib/api';
+import { sessionsApi, draftsApi, dailyTotalsApi, reprocessApi } from '@/lib/api';
 import { Plus, Mic } from 'lucide-react';
 import StationBreakdown from '@/components/StationBreakdown';
 
@@ -61,8 +61,29 @@ export default function Home() {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [breakdown, setBreakdown] = useState(null);
+  const [healing, setHealing] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load().then(healMissingScores); }, []);
+
+  // Sessions saved without a score (Training Log, Strava, drafts, or older
+  // bugs) count 0 here. Ask the backend to score them in batches, then
+  // reload so the boxes reflect them. Best-effort and silent on failure.
+  async function healMissingScores() {
+    let anyScored = false;
+    try {
+      for (let i = 0; i < 5; i++) {
+        setHealing(true);
+        const r = await reprocessApi.scoreMissing();
+        if (r.scored) anyScored = true;
+        if (!r.remaining || !r.attempted) break;
+      }
+    } catch {
+      // ignore — the breakdown view still lists anything not counted
+    } finally {
+      setHealing(false);
+    }
+    if (anyScored) load();
+  }
 
   async function load() {
     setLoading(true);
@@ -136,6 +157,10 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      {healing && (
+        <div className="text-[13px] text-[#A6A49C]">Scoring sessions that weren't counted yet…</div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-[#F5C400] border-t-transparent rounded-full animate-spin" /></div>
