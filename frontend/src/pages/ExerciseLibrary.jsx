@@ -5,7 +5,7 @@ import { STATIONS } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search, CheckCheck, X as XIcon } from 'lucide-react';
+import { Plus, Trash2, Sparkles, BookOpen, ScanSearch, Search, CheckCheck, X as XIcon, Merge } from 'lucide-react';
 
 const STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
 
@@ -74,6 +74,8 @@ export default function ExerciseLibrary() {
   const [stationReferences, setStationReferences] = useState(null);
   const [selectedPending, setSelectedPending] = useState(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [duplicates, setDuplicates] = useState([]);
+  const [merging, setMerging] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => { load(); stationReferencesApi.get().then(setStationReferences).catch(() => {}); }, []);
@@ -83,11 +85,46 @@ export default function ExerciseLibrary() {
     try {
       const data = await exerciseLibraryApi.list();
       setLibrary(data || []);
+      loadDuplicates();
     } catch {
       toast({ title: 'Error', description: 'Failed to load exercise library', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadDuplicates() {
+    try {
+      setDuplicates(await exerciseLibraryApi.duplicates() || []);
+    } catch {
+      setDuplicates([]);
+    }
+  }
+
+  // One movement = one library entry = one credit mapping. Merging keeps the
+  // canonical entry's credits, adds the other spellings as aliases, and
+  // rescores every past session that used a merged-away entry.
+  async function handleMerge(group) {
+    setMerging(true);
+    try {
+      const result = group
+        ? await exerciseLibraryApi.merge(group.sources.map(s => s.key), group.targetKey)
+        : await exerciseLibraryApi.mergeAll();
+      setLibrary(result.library || []);
+      const merged = result.results.reduce((n, r) => n + r.merged.length, 0);
+      const rescored = result.results.reduce((n, r) => n + r.sessionsRescored, 0);
+      toast({ title: 'Merged', description: `${merged} duplicate entr${merged === 1 ? 'y' : 'ies'} merged, ${rescored} session(s) rescored.` });
+      loadDuplicates();
+    } catch (err) {
+      toast({ title: 'Merge failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  function pct(credits) {
+    const parts = Object.entries(credits || {}).map(([k, v]) => `${STATION_SHORT_LABEL[k] || k} ${Math.round(v * 100)}%`);
+    return parts.length ? parts.join(', ') : 'no credit';
   }
 
   function updateLocal(key, patch) {
@@ -197,6 +234,7 @@ export default function ExerciseLibrary() {
     try {
       const result = await exerciseLibraryApi.backfill();
       setLibrary(result.library || []);
+      loadDuplicates();
       toast({
         title: 'Scan complete',
         description: `Scanned ${result.scanned} distinct exercise name(s) from every logged session — ${result.addedCount} new one(s) added${result.addedCount ? ' as pending review.' : '.'}`,
@@ -293,6 +331,34 @@ export default function ExerciseLibrary() {
               </Button>
             </div>
           )}
+        </div>
+      )}
+
+      {duplicates.length > 0 && (
+        <div className="border border-red-400/30 bg-red-400/5 rounded-lg p-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="text-sm">
+              <span className="font-medium text-red-400">{duplicates.length} duplicate exercise{duplicates.length === 1 ? '' : 's'} found.</span>{' '}
+              <span className="text-muted-foreground">Same movement, different spelling — and possibly scored differently. Merge keeps the first entry's credits, adds the other names as aliases, and rescores affected sessions.</span>
+            </div>
+            <Button size="sm" className="gap-1.5 h-7 text-xs" disabled={merging} onClick={() => handleMerge(null)}>
+              <Merge className="h-3.5 w-3.5" /> {merging ? 'Merging...' : 'Merge all'}
+            </Button>
+          </div>
+          <ul className="space-y-1">
+            {duplicates.map(g => (
+              <li key={g.targetKey} className="flex items-center justify-between gap-3 text-xs border-t border-border/50 pt-1">
+                <span>
+                  <span className="font-medium">Keep "{g.target.label}"</span>{' '}
+                  <span className="text-muted-foreground">({g.target.status}; {pct(g.target.credits)})</span>
+                  {g.sources.map(s => (
+                    <span key={s.key} className="text-muted-foreground"> ← "{s.label}" ({s.status}; {pct(s.credits)})</span>
+                  ))}
+                </span>
+                <Button size="sm" variant="outline" className="h-6 text-xs shrink-0" disabled={merging} onClick={() => handleMerge(g)}>Merge</Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

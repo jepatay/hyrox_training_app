@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import admin from 'firebase-admin';
 import { collections } from '../services/firebase.js';
-import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits, sanitizeUnit, sanitizeReferenceLoadKg } from '../services/exerciseLibrary.js';
+import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits, sanitizeUnit, sanitizeReferenceLoadKg, findDuplicateGroups, matchExercise } from '../services/exerciseLibrary.js';
+import { mergeExercises, mergeAllDuplicates } from '../services/v2Pipeline.js';
 import { suggestExerciseStationCredits } from '../services/claude.js';
 
 const router = Router();
@@ -65,6 +66,38 @@ router.post('/backfill', async (_req, res) => {
   }
 });
 
+// GET clear duplicates — entries that normalize to the same name
+// ("Bar Muscle Up" / "Bar Muscle Ups"), each group with the entry that
+// would be kept and the ones that would be folded into it.
+router.get('/duplicates', async (_req, res) => {
+  try {
+    res.json(findDuplicateGroups(await listLibrary()));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to check for duplicates' });
+  }
+});
+
+// POST merge — { sourceKeys, targetKey } merges those specific entries;
+// { all: true } merges every clear duplicate group.
+router.post('/merge', async (req, res) => {
+  try {
+    const { sourceKeys, targetKey, all } = req.body;
+    if (all) {
+      const results = await mergeAllDuplicates();
+      return res.json({ results, library: await listLibrary() });
+    }
+    if (!Array.isArray(sourceKeys) || !sourceKeys.length || !targetKey) {
+      return res.status(400).json({ error: 'sourceKeys and targetKey required' });
+    }
+    const result = await mergeExercises(sourceKeys, targetKey);
+    res.json({ results: [result], library: await listLibrary() });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message || 'Failed to merge exercises' });
+  }
+});
+
 // POST create a new exercise directly — approved immediately, since the
 // athlete is intentionally authoring it rather than the AI guessing at one
 // found in a note.
@@ -74,6 +107,10 @@ router.post('/', async (req, res) => {
     if (!label?.trim()) return res.status(400).json({ error: 'label required' });
 
     const library = await listLibrary();
+    const existing = matchExercise(label, library);
+    if (existing) {
+      return res.status(409).json({ error: `"${label.trim()}" is the same exercise as "${existing.label}" — edit that one instead.` });
+    }
     const base = slugify(label);
     const existingKeys = new Set(library.map(e => e.key));
     let key = base, i = 2;

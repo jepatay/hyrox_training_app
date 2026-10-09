@@ -125,6 +125,9 @@ export const exerciseLibraryApi = {
   delete: (key) => api.delete(`/api/exercise-library/${key}`),
   backfill: () => api.post('/api/exercise-library/backfill', {}),
   bulkStatus: (keys, status) => api.put('/api/exercise-library/bulk-status', { keys, status }),
+  duplicates: () => api.get('/api/exercise-library/duplicates'),
+  merge: (sourceKeys, targetKey) => api.post('/api/exercise-library/merge', { sourceKeys, targetKey }),
+  mergeAll: () => api.post('/api/exercise-library/merge', { all: true }),
 };
 
 export const stationReferencesApi = {

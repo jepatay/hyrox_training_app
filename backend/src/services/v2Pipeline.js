@@ -1,6 +1,6 @@
 import admin from 'firebase-admin';
 import { collections, docToObj } from './firebase.js';
-import { listLibrary, resolveExercisesAgainstLibrary } from './exerciseLibrary.js';
+import { listLibrary, resolveExercisesAgainstLibrary, findDuplicateGroups, mergedAliases, remapSessionLibraryKeys } from './exerciseLibrary.js';
 import { getStationReferences } from './stationReferences.js';
 import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part } from './claude.js';
 import { scoreSession, linesFromExtractionV2 } from './scoring.js';
@@ -97,4 +97,61 @@ export async function extractAndScoreSessions(ids, label = 'auto-score') {
       console.error(`${label} failed for session ${id}:`, err);
     }
   }
+}
+
+// Folds `sourceKeys` into `targetKey`: the target picks up every source
+// spelling as an alias, every session pointing at a source is repointed at
+// the target, the sources are deleted, and each affected session is
+// rescored — so one movement has exactly one entry and one credit mapping,
+// and past sessions are re-evaluated under it.
+export async function mergeExercises(sourceKeys, targetKey) {
+  const sources = [...new Set(sourceKeys)].filter(k => k && k !== targetKey);
+  if (!sources.length) throw new Error('Nothing to merge');
+  const library = await listLibrary();
+  const target = library.find(e => e.key === targetKey);
+  if (!target) throw new Error(`Unknown target exercise: ${targetKey}`);
+  const sourceEntries = sources.map(k => library.find(e => e.key === k));
+  if (sourceEntries.some(e => !e)) throw new Error('Unknown source exercise');
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const aliases = mergedAliases(target, sourceEntries);
+  await collections.exerciseLibrary().doc(targetKey).update({ aliases, updatedAt: now });
+
+  const snap = await collections.sessions().get();
+  const affected = [];
+  for (const doc of snap.docs) {
+    const session = docToObj(doc);
+    const patch = remapSessionLibraryKeys(session, sources, targetKey);
+    if (!patch) continue;
+    await doc.ref.update({ ...patch, updatedAt: now });
+    affected.push({ ...session, ...patch });
+  }
+
+  await Promise.all(sources.map(k => collections.exerciseLibrary().doc(k).delete()));
+
+  const merged = { ...target, aliases };
+  const freshLibrary = library.filter(e => !sources.includes(e.key)).map(e => e.key === targetKey ? merged : e);
+  const [references, objective] = await Promise.all([getStationReferences(), getActiveObjective()]);
+  let rescored = 0;
+  for (const s of affected) {
+    if (s.status === 'planned') continue;
+    try {
+      await scoreOneSession(s, freshLibrary, references, objective);
+      rescored++;
+    } catch (err) {
+      console.error(`merge rescore failed for session ${s.id}:`, err);
+    }
+  }
+  return { targetKey, merged: sources, sessionsUpdated: affected.length, sessionsRescored: rescored };
+}
+
+// Merges every clear duplicate group in the library (see
+// findDuplicateGroups) into its canonical entry.
+export async function mergeAllDuplicates() {
+  const groups = findDuplicateGroups(await listLibrary());
+  const results = [];
+  for (const g of groups) {
+    results.push(await mergeExercises(g.sources.map(s => s.key), g.targetKey));
+  }
+  return results;
 }

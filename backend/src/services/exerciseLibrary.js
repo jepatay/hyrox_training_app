@@ -174,14 +174,150 @@ export async function listLibrary() {
   return snap.docs.map(d => ({ key: d.id, ...d.data() }));
 }
 
+// Collapses the spelling variants the AI extraction produces for one
+// movement — plural/singular ("Bar Muscle Ups" vs "Bar Muscle Up"),
+// hyphens/spacing ("pull-ups", "pull ups", "pullups"), case, "&" vs "and" —
+// into one comparison form. Exact-text matching alone let each variant
+// become its own pending entry with its own independently AI-suggested
+// credits, so the same movement scored differently depending on wording.
+function singularize(word) {
+  if (word.length <= 2) return word;
+  if (/(ss|us|is)$/.test(word)) return word;
+  if (/(sses|ches|shes|xes)$/.test(word)) return word.slice(0, -2);
+  if (word.endsWith('s')) return word.slice(0, -1);
+  return word;
+}
+
+export function normalizeExerciseName(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/'/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(singularize)
+    .join('');
+}
+
+// Every name an entry answers to, in normalized form.
+function entryNames(entry) {
+  return [entry.key, entry.label, ...(entry.aliases || [])]
+    .map(normalizeExerciseName)
+    .filter(Boolean);
+}
+
 export function matchExercise(name, library) {
   if (!name) return null;
   const n = name.trim().toLowerCase();
   if (!n) return null;
-  return library.find(e => e.key.toLowerCase() === n)
+  const exact = library.find(e => e.key.toLowerCase() === n)
     || library.find(e => e.label?.toLowerCase() === n)
-    || library.find(e => (e.aliases || []).some(a => a.toLowerCase() === n))
-    || null;
+    || library.find(e => (e.aliases || []).some(a => a.toLowerCase() === n));
+  if (exact) return exact;
+  // Normalized fallback — prefers an approved entry over a pending/rejected
+  // one if (pre-merge) more than one answers to the same normalized name.
+  const norm = normalizeExerciseName(name);
+  if (!norm) return null;
+  const candidates = library.filter(e => entryNames(e).includes(norm));
+  return candidates.sort(compareCanonical)[0] || null;
+}
+
+const STATUS_RANK = { approved: 0, pending: 1, rejected: 2 };
+const SOURCE_RANK = { builtin: 0, user: 1, ai_suggested: 2 };
+
+function createdMillis(e) {
+  const c = e.createdAt;
+  if (!c) return Infinity;
+  if (typeof c.toMillis === 'function') return c.toMillis();
+  if (c._seconds != null) return c._seconds * 1000;
+  const t = new Date(c).getTime();
+  return Number.isFinite(t) ? t : Infinity;
+}
+
+// Which entry of a duplicate group survives a merge: approved over pending
+// over rejected, builtin over user-authored over AI-suggested, then the
+// oldest, then the shortest key (the un-suffixed slug, e.g. barMuscleUp
+// over barMuscleUp2).
+export function compareCanonical(a, b) {
+  return ((STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?? 3))
+    || ((SOURCE_RANK[a.source] ?? 3) - (SOURCE_RANK[b.source] ?? 3))
+    || (createdMillis(a) - createdMillis(b))
+    || (a.key.length - b.key.length)
+    || a.key.localeCompare(b.key);
+}
+
+// Groups of library entries that are clearly the same movement — any two
+// entries sharing a normalized name (key, label or alias) end up in one
+// group. Each group names the entry to keep and the ones to fold into it.
+export function findDuplicateGroups(library) {
+  const parent = new Map(library.map(e => [e.key, e.key]));
+  const find = k => { while (parent.get(k) !== k) k = parent.get(k); return k; };
+  const owner = new Map();
+  for (const e of library) {
+    for (const n of entryNames(e)) {
+      if (owner.has(n)) parent.set(find(e.key), find(owner.get(n)));
+      else owner.set(n, e.key);
+    }
+  }
+  const groups = new Map();
+  for (const e of library) {
+    const root = find(e.key);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(e);
+  }
+  return [...groups.values()]
+    .filter(g => g.length > 1)
+    .map(g => {
+      const [target, ...sources] = [...g].sort(compareCanonical);
+      return {
+        targetKey: target.key,
+        targetLabel: target.label,
+        sources: sources.map(s => ({ key: s.key, label: s.label, status: s.status, credits: s.credits || {} })),
+        target: { key: target.key, label: target.label, status: target.status, credits: target.credits || {} },
+      };
+    });
+}
+
+// Folds every other spelling into the target's aliases so future
+// extractions of any of them resolve straight to the target.
+export function mergedAliases(target, sources) {
+  const targetLabel = normalizeExerciseName(target.label);
+  const seen = new Set([targetLabel]);
+  const out = [];
+  for (const a of [...(target.aliases || []), ...sources.flatMap(s => [s.label, ...(s.aliases || [])])]) {
+    const t = a?.trim();
+    if (!t) continue;
+    const lower = t.toLowerCase();
+    if (seen.has(lower) || lower === target.label?.toLowerCase()) continue;
+    seen.add(lower);
+    out.push(t);
+  }
+  return out;
+}
+
+// Points every libraryKey in a session's cached extractions at the merge
+// target. Returns the patch to write, or null if the session never
+// referenced any of the merged-away keys.
+export function remapSessionLibraryKeys(session, sourceKeys, targetKey) {
+  const src = new Set(sourceKeys);
+  const patch = {};
+  const v2Lines = session.extractionV2?.lines;
+  if (v2Lines?.some(l => src.has(l.libraryKey))) {
+    patch.extractionV2 = {
+      ...session.extractionV2,
+      lines: v2Lines.map(l => src.has(l.libraryKey) ? { ...l, libraryKey: targetKey } : l),
+    };
+  }
+  const v1 = session.extractedExercises?.exercises;
+  if (v1?.some(e => src.has(e?.libraryKey))) {
+    patch.extractedExercises = {
+      ...session.extractedExercises,
+      exercises: v1.map(e => src.has(e?.libraryKey) ? { ...e, libraryKey: targetKey } : e),
+    };
+  }
+  return Object.keys(patch).length ? patch : null;
 }
 
 export function slugify(name) {
