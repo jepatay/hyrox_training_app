@@ -124,6 +124,7 @@ export const exerciseLibraryApi = {
   update: (key, data) => api.put(`/api/exercise-library/${key}`, data),
   delete: (key) => api.delete(`/api/exercise-library/${key}`),
   backfill: () => api.post('/api/exercise-library/backfill', {}),
+  mergeRunSegments: () => api.post('/api/exercise-library/merge-run-segments', {}),
   bulkStatus: (keys, status) => api.put('/api/exercise-library/bulk-status', { keys, status }),
 };
 

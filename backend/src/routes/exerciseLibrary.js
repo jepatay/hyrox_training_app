@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import admin from 'firebase-admin';
-import { collections } from '../services/firebase.js';
-import { listLibrary, resolveExercisesAgainstLibrary, slugify, sanitizeCredits, sanitizeUnit, sanitizeReferenceLoadKg } from '../services/exerciseLibrary.js';
+import { collections, docToObj } from '../services/firebase.js';
+import { listLibrary, mergeRunSegmentEntries, resolveExercisesAgainstLibrary, slugify, sanitizeCredits, sanitizeUnit, sanitizeReferenceLoadKg } from '../services/exerciseLibrary.js';
 import { suggestExerciseStationCredits } from '../services/claude.js';
+import { scoreOneSession, getActiveObjective } from '../services/v2Pipeline.js';
+import { getStationReferences } from '../services/stationReferences.js';
 
 const router = Router();
 
@@ -99,6 +101,27 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create exercise' });
+  }
+});
+
+// POST fold "Lap 1", "Lap 2", "Km 3"... entries (Strava lap/split labels
+// mistaken for exercises) into Run: session lines are repointed, the entries
+// deleted, and affected sessions re-scored from their cached extraction (no
+// new AI read).
+router.post('/merge-run-segments', async (_req, res) => {
+  try {
+    const { library, merged, affectedSessionIds } = await mergeRunSegmentEntries(await listLibrary());
+    if (affectedSessionIds.length) {
+      const [references, objective] = await Promise.all([getStationReferences(), getActiveObjective()]);
+      for (const id of affectedSessionIds) {
+        const session = docToObj(await collections.sessions().doc(id).get());
+        if (session) await scoreOneSession(session, library, references, objective);
+      }
+    }
+    res.json({ merged, sessionsUpdated: affectedSessionIds.length, library });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to merge lap entries into Run' });
   }
 });
 

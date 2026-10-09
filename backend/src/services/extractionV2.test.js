@@ -140,3 +140,13 @@ test('ensureRunLines does nothing for a non-running session type', () => {
   const session = { type: 'hyrox_training', notes: 'no run here', runningDistance: null };
   assert.deepEqual(ensureRunLines([], session), []);
 });
+
+test('matchExercise resolves Strava lap/split labels to Run, not new entries', async () => {
+  const { matchExercise } = await import('./exerciseLibrary.js');
+  const library = [{ key: 'run', label: 'Run', aliases: [] }, { key: 'lapping', label: 'Lapping', aliases: [] }];
+  for (const name of ['Lap 2', 'lap', 'Laps', 'Km 3', 'Split 10', 'Mile 1']) {
+    assert.equal(matchExercise(name, library)?.key, 'run', name);
+  }
+  assert.equal(matchExercise('Lapping', library)?.key, 'lapping');
+  assert.equal(matchExercise('Lap Pulldown', library), null);
+});
