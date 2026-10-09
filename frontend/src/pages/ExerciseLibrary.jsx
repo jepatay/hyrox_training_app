@@ -74,6 +74,7 @@ export default function ExerciseLibrary() {
   const [stationReferences, setStationReferences] = useState(null);
   const [selectedPending, setSelectedPending] = useState(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [mergingLaps, setMergingLaps] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => { load(); stationReferencesApi.get().then(setStationReferences).catch(() => {}); }, []);
@@ -208,6 +209,20 @@ export default function ExerciseLibrary() {
     }
   }
 
+  async function handleMergeLaps() {
+    setMergingLaps(true);
+    try {
+      const result = await exerciseLibraryApi.mergeRunSegments();
+      setLibrary(result.library || []);
+      setSelectedPending(new Set());
+      toast({ title: 'Laps merged into Run', description: `${result.merged} lap/split entr${result.merged === 1 ? 'y' : 'ies'} removed — ${result.sessionsUpdated} session(s) now count them as Run.` });
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setMergingLaps(false);
+    }
+  }
+
   function togglePendingSelection(key) {
     setSelectedPending(prev => {
       const next = new Set(prev);
@@ -242,6 +257,9 @@ export default function ExerciseLibrary() {
   }, [library, statusFilter, search]);
 
   const pendingCount = library.filter(e => e.status === 'pending').length;
+  // "Lap 2", "Km 3"... — Strava lap/split labels mistaken for exercises
+  // before the backend learned to resolve them to Run.
+  const lapEntryCount = library.filter(e => e.source !== 'builtin' && /^(laps?|splits?|km|km splits?|miles?|segments?)\s*\d*$/i.test((e.label || '').trim())).length;
 
   if (loading) {
     return <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
@@ -260,6 +278,18 @@ export default function ExerciseLibrary() {
           <ScanSearch className="h-3.5 w-3.5" /> {scanning ? 'Scanning...' : 'Scan Past Sessions'}
         </Button>
       </div>
+
+      {lapEntryCount > 0 && (
+        <div className="border border-primary/30 bg-primary/5 rounded-lg p-3 flex items-center justify-between flex-wrap gap-3">
+          <div className="text-sm">
+            <span className="font-medium">{lapEntryCount} "Lap"/"Split" entr{lapEntryCount === 1 ? 'y' : 'ies'} found.</span>{' '}
+            <span className="text-muted-foreground">These are segments of a run, not exercises. Merge them into Run so they count as running.</span>
+          </div>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleMergeLaps} disabled={mergingLaps}>
+            {mergingLaps ? 'Merging...' : 'Merge into Run'}
+          </Button>
+        </div>
+      )}
 
       {pendingCount > 0 && (
         <div className="border border-orange-400/30 bg-orange-400/5 rounded-lg p-3 flex items-center justify-between flex-wrap gap-3">

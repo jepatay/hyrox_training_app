@@ -174,10 +174,20 @@ export async function listLibrary() {
   return snap.docs.map(d => ({ key: d.id, ...d.data() }));
 }
 
+// Strava lap/split labels ("Lap 2", "Km 3", "Split 1") are segments of a run,
+// not movements of their own — ten laps is just running. They resolve to the
+// Run builtin instead of each spawning its own pending library entry.
+const RUN_SEGMENT_RE = /^(laps?|splits?|km|km splits?|miles?|segments?)\s*\d*$/i;
+
+export function isRunSegmentName(name) {
+  return RUN_SEGMENT_RE.test((name || '').trim());
+}
+
 export function matchExercise(name, library) {
   if (!name) return null;
   const n = name.trim().toLowerCase();
   if (!n) return null;
+  if (isRunSegmentName(n)) return library.find(e => e.key === 'run') || null;
   return library.find(e => e.key.toLowerCase() === n)
     || library.find(e => e.label?.toLowerCase() === n)
     || library.find(e => (e.aliases || []).some(a => a.toLowerCase() === n))
@@ -285,4 +295,41 @@ export async function resolveExercisesAgainstLibrary(rawExercises, library) {
     resolved.push({ ...e, libraryKey: entry.key });
   }
   return { exercises: resolved, library: lib };
+}
+
+// Cleanup for "Lap N"-style entries created before isRunSegmentName existed:
+// repoints every session line that referenced one to Run, then deletes those
+// entries. Triggered explicitly from the Exercise Library page. Returns the
+// cleaned library plus the ids of sessions that need re-scoring.
+function runSegmentEntries(library) {
+  return library.filter(e => e.source !== 'builtin' && isRunSegmentName(e.label));
+}
+
+export async function mergeRunSegmentEntries(library) {
+  const stray = runSegmentEntries(library);
+  if (!stray.length) return { library, merged: 0, affectedSessionIds: [] };
+  const strayKeys = new Set(stray.map(e => e.key));
+  const remap = l => {
+    if (!strayKeys.has(l?.libraryKey)) return l;
+    const out = { ...l, libraryKey: 'run' };
+    if ('exercise' in l) out.exercise = 'Run';
+    if ('name' in l) out.name = 'Run';
+    return out;
+  };
+
+  const affectedSessionIds = [];
+  const snap = await collections.sessions().get();
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const v2Lines = data.extractionV2?.lines || [];
+    const v1Exercises = data.extractedExercises?.exercises || [];
+    if (![...v2Lines, ...v1Exercises].some(l => strayKeys.has(l?.libraryKey))) continue;
+    const updates = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (v2Lines.length) updates['extractionV2.lines'] = v2Lines.map(remap);
+    if (v1Exercises.length) updates['extractedExercises.exercises'] = v1Exercises.map(remap);
+    await doc.ref.update(updates);
+    affectedSessionIds.push(doc.id);
+  }
+  await Promise.all(stray.map(e => collections.exerciseLibrary().doc(e.key).delete()));
+  return { library: library.filter(e => !strayKeys.has(e.key)), merged: stray.length, affectedSessionIds };
 }
