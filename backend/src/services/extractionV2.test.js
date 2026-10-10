@@ -109,10 +109,18 @@ test('parseStravaLapsFromNotes returns nothing when neither section is present',
   assert.deepEqual(parseStravaLapsFromNotes(null), []);
 });
 
-test('ensureRunLines never touches an extraction that already found a run', () => {
+test('ensureRunLines keeps a model-found run when there is no Strava lap data', () => {
   const lines = [{ part: 'main', exercise: 'Run', intervals: 1, distanceM: 5000 }];
-  const session = { type: 'running', notes: 'Laps (2):\n  Lap 1: 1000m @ 4:00/km (4:00)', runningDistance: 5 };
+  const session = { type: 'running', notes: 'Ran 5k', runningDistance: 5 };
   assert.deepEqual(ensureRunLines(lines, session), lines);
+});
+
+test('ensureRunLines lets Strava laps replace a model-found run (no double count)', () => {
+  const lines = [{ part: 'main', exercise: 'Run', intervals: 1, distanceM: 5000 }];
+  const session = { type: 'running', notes: 'Laps (2):\n  Lap 1: 1000m @ 4:00/km (4:00)\n  Lap 2: 1000m @ 4:00/km (4:00)' };
+  const result = ensureRunLines(lines, session);
+  assert.equal(result.length, 2);
+  assert.ok(result.every(l => l.distanceM === 1000));
 });
 
 test('ensureRunLines falls back to Strava laps when extraction found none', () => {
@@ -149,4 +157,39 @@ test('matchExercise resolves Strava lap/split labels to Run, not new entries', a
   }
   assert.equal(matchExercise('Lapping', library)?.key, 'lapping');
   assert.equal(matchExercise('Lap Pulldown', library), null);
+});
+
+const INTERVAL_RUN_PLUS_THRUSTERS = `Avg pace: 4:55/km
+Elevation: +50m / -111m
+Avg HR: 145 bpm (max 172)
+Avg cadence: 162 spm
+Calories: 613 kcal
+
+Running intervals
+
+Laps (6):
+  Lap 1: 1000m @ 5:40/km (5:40) · 124 bpm · +8m
+  Lap 2: 91m @ 4:35/km (0:24) · 138 bpm
+  Lap 3: 48m @ 52:05/km (2:32) · 122 bpm
+  Lap 4: 364m @ 3:48/km (1:23) · 133 bpm
+  Lap 5: 28m @ 37:02/km (1:01) · 162 bpm
+  Lap 6: 525m @ 9:28/km (4:58) · 126 bpm
+
+Then 100 thrusters KB 12kg`;
+
+test('splitStravaRunBlock drops standing-rest laps and leaves the rest of the notes for the model', async () => {
+  const { splitStravaRunBlock } = await import('./claude.js');
+  const { runLines, otherNotes } = splitStravaRunBlock(INTERVAL_RUN_PLUS_THRUSTERS);
+  assert.deepEqual(runLines.map(l => l.distanceM), [1000, 91, 364, 525]); // 48m/28m rest laps dropped
+  assert.equal(runLines[2].timeSec, 83);
+  assert.ok(otherNotes.includes('Then 100 thrusters KB 12kg'));
+  assert.ok(!otherNotes.includes('Lap 1'));
+});
+
+test('ensureRunLines adds Strava laps even when the session is not typed running', () => {
+  const modelLines = [{ part: 'finisher', exercise: 'Thrusters', intervals: 1, reps: 100, weightKg: 12 }];
+  const session = { type: 'hyrox_training', notes: INTERVAL_RUN_PLUS_THRUSTERS };
+  const result = ensureRunLines(modelLines, session);
+  assert.equal(result[0].exercise, 'Thrusters');
+  assert.equal(result.filter(l => l.exercise === 'Run').length, 4);
 });

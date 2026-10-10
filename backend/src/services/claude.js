@@ -677,68 +677,88 @@ export function parseExtractionSummaryV2(text) {
   return { lines };
 }
 
-// Fallback lines for a run/Strava-imported session whose extraction found no
-// run line — built from data that's already on the session rather than
-// guessed. Strava lap/split detail arrives as plain text in `notes` (see
-// strava.js's activity-detail renderer), so that's parsed first for
-// per-lap distance+time (each lap keeping its own pace, per section 2.4);
-// only when that's absent too does this fall back to one line from the
-// session's total `runningDistance` (and `duration`, if logged), which
-// carries no pace and scores at a neutral factor.
-export function parseStravaLapsFromNotes(notes) {
-  if (!notes) return [];
-  const lines = notes.split('\n');
+// Strava lap/split detail arrives as plain text in `notes` (see strava.js's
+// activity-detail renderer): a "Laps (N):" block, or "Km splits:" when the
+// activity has no laps. That block is parsed here deterministically — one Run
+// line per lap, each keeping its own distance+time (section 2.4) — instead of
+// being left to the model, which on a 30-lap interval session tends to read
+// nothing at all, or only the strength work tacked on after it.
+const STRAVA_LAP_HEADER_RE = /^Laps \(\d+\):/i;
+const STRAVA_SPLIT_HEADER_RE = /^Km splits:/i;
+const STRAVA_LAP_ROW_RE = /^\s*Lap\s+\d+:\s*([\d.]+)\s*m.*?\((\d+):(\d{2})\)/i;
+const STRAVA_SPLIT_ROW_RE = /^\s*km\s+\d+:\s*(\d+):(\d{2})\/km/i;
+// Standing recovery between reps (e.g. 28 m in 1:01) — the watch keeps a lap
+// running but nobody's running, so it isn't a run segment.
+const STRAVA_REST_PACE_SEC_PER_KM = 15 * 60;
 
-  const lapHeaderIdx = lines.findIndex(l => /^Laps \(\d+\):/i.test(l.trim()));
-  if (lapHeaderIdx !== -1) {
-    const laps = [];
-    for (let i = lapHeaderIdx + 1; i < lines.length; i++) {
-      const m = lines[i].match(/^\s*Lap\s+\d+:\s*([\d.]+)\s*m.*?\((\d+):(\d{2})\)/i);
-      if (!m) break;
-      laps.push({
-        part: 'main', exercise: 'Run', intervals: 1,
-        distanceM: parseFloat(m[1]), timeSec: parseInt(m[2], 10) * 60 + parseInt(m[3], 10),
-      });
+function readStravaBlock(lines, headerRe, rowRe, toLine) {
+  const headerIdx = lines.findIndex(l => headerRe.test(l.trim()));
+  if (headerIdx === -1) return null;
+  const parsed = [];
+  let end = headerIdx + 1;
+  for (; end < lines.length; end++) {
+    if (!lines[end].trim()) {
+      if (parsed.length) break;
+      continue;
     }
-    if (laps.length) return laps;
+    const m = lines[end].match(rowRe);
+    if (!m) break;
+    parsed.push(toLine(m));
   }
-
-  const splitHeaderIdx = lines.findIndex(l => /^Km splits:/i.test(l.trim()));
-  if (splitHeaderIdx !== -1) {
-    const splits = [];
-    for (let i = splitHeaderIdx + 1; i < lines.length; i++) {
-      const m = lines[i].match(/^\s*km\s+\d+:\s*(\d+):(\d{2})\/km/i);
-      if (!m) break;
-      splits.push({
-        part: 'main', exercise: 'Run', intervals: 1,
-        distanceM: 1000, timeSec: parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
-      });
-    }
-    if (splits.length) return splits;
-  }
-
-  return [];
+  return { start: headerIdx, end, lines: parsed };
 }
 
-// Adds a run line to extractionV2 lines when a running session's extraction
-// didn't find one — never overwrites a run the extraction DID find (which
-// may carry better per-interval pace data than a lap/split text parse would).
-export function ensureRunLines(lines, session) {
-  const hasRun = (lines || []).some(l => /run/i.test(l.exercise || ''));
-  if (hasRun || session?.type !== 'running') return lines || [];
+// Returns the Strava run lines plus the notes with that block cut out — what's
+// left (title, totals, "Then 100 thrusters…") is what the model still reads.
+export function splitStravaRunBlock(notes) {
+  if (!notes) return { runLines: [], otherNotes: notes || '' };
+  const lines = notes.split('\n');
+  const block =
+    readStravaBlock(lines, STRAVA_LAP_HEADER_RE, STRAVA_LAP_ROW_RE, m => ({
+      part: 'main', exercise: 'Run', intervals: 1,
+      distanceM: parseFloat(m[1]), timeSec: parseInt(m[2], 10) * 60 + parseInt(m[3], 10),
+    })) ||
+    readStravaBlock(lines, STRAVA_SPLIT_HEADER_RE, STRAVA_SPLIT_ROW_RE, m => ({
+      part: 'main', exercise: 'Run', intervals: 1,
+      distanceM: 1000, timeSec: parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
+    }));
+  if (!block?.lines.length) return { runLines: [], otherNotes: notes };
+  const runLines = block.lines.filter(l =>
+    l.distanceM > 0 && (!l.timeSec || (l.timeSec * 1000) / l.distanceM < STRAVA_REST_PACE_SEC_PER_KM));
+  const otherNotes = [...lines.slice(0, block.start), ...lines.slice(block.end)].join('\n');
+  return { runLines, otherNotes };
+}
 
-  const fromLaps = parseStravaLapsFromNotes(session.notes);
-  if (fromLaps.length) return [...(lines || []), ...fromLaps];
+export function parseStravaLapsFromNotes(notes) {
+  return splitStravaRunBlock(notes).runLines;
+}
+
+// Adds run lines the extraction missed. Strava lap/split data, when present,
+// is authoritative for the run whatever the session type (an interval run
+// followed by thrusters is often logged as HYROX training) and replaces any
+// "Run" the model produced, so the run is never counted twice. Without it,
+// a running session whose extraction found no run falls back to one line
+// from the session's total `runningDistance` (and `duration`, if logged),
+// which carries no pace and scores at a neutral factor.
+export function ensureRunLines(lines, session) {
+  const base = lines || [];
+  const stravaRuns = parseStravaLapsFromNotes(session?.notes);
+  if (stravaRuns.length) {
+    return [...base.filter(l => !/^run$/i.test((l.exercise || '').trim())), ...stravaRuns];
+  }
+
+  const hasRun = base.some(l => /run/i.test(l.exercise || ''));
+  if (hasRun || session?.type !== 'running') return base;
 
   if (session?.runningDistance) {
-    return [...(lines || []), {
+    return [...base, {
       part: 'main', exercise: 'Run', intervals: 1,
       distanceM: session.runningDistance * 1000,
       timeSec: session.duration ? session.duration * 60 : null,
       notes: 'from runningDistance, no per-interval pace',
     }];
   }
-  return lines || [];
+  return base;
 }
 
 // Asks the model how a not-yet-recognized exercise should count toward the 9

@@ -2,7 +2,7 @@ import admin from 'firebase-admin';
 import { collections, docToObj } from './firebase.js';
 import { listLibrary, resolveExercisesAgainstLibrary } from './exerciseLibrary.js';
 import { getStationReferences } from './stationReferences.js';
-import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part } from './claude.js';
+import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part, splitStravaRunBlock } from './claude.js';
 import { scoreSession, linesFromExtractionV2 } from './scoring.js';
 import { recomputeDailyTotal } from './dailyTotals.js';
 
@@ -28,8 +28,12 @@ export async function getActiveObjective() {
 // `library` may be passed (and is mutated with new pending entries) so a
 // batch shares one fetch.
 export async function extractV2ForSession(session, library) {
-  const raw = session.notes?.trim()
-    ? await extractExercisesFromNotesV2({ type: session.type, notes: session.notes })
+  // A Strava lap block is parsed in code (ensureRunLines); the model only
+  // sees the rest, so dozens of lap rows can't drown out the other work.
+  const { runLines, otherNotes } = splitStravaRunBlock(session.notes);
+  const modelNotes = runLines.length ? otherNotes : session.notes;
+  const raw = modelNotes?.trim()
+    ? await extractExercisesFromNotesV2({ type: session.type, notes: modelNotes })
     : { lines: [] };
   if (!raw) throw new Error("Couldn't read the session notes (AI extraction failed)");
   // Filtered before resolving so `lines` and `resolvedLines` stay
