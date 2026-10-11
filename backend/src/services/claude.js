@@ -36,7 +36,7 @@ async function chatJson(prompt, maxTokens = 600) {
     try {
       return JSON.parse(raw);
     } catch {
-      console.error('chatJson: failed to parse JSON response', raw?.slice(0, 200));
+      console.error('chatJson: failed to parse JSON response', completion.choices[0].finish_reason, raw?.slice(0, 200));
       return null;
     }
   } catch (err) {
@@ -535,8 +535,86 @@ RUN LAPS/SPLITS — "Lap 1", "Lap 2", "Km 3", "Split 4" etc. (e.g. Strava lap da
 ROUND-COUNTING — apply the same rule regardless of section: COUNT how many times a block of movements actually appears (explicit count, numbered rounds, or repeated back-to-back blocks with no count stated) and reflect it in "intervals" with the PER-INTERVAL numbers, never a pre-multiplied total. If a movement's weight changes partway through repeated blocks, output SEPARATE lines per weight bracket.`;
   // A long session easily runs past 1,400 output tokens; a truncated reply
   // fails JSON.parse and comes back null, which used to look like "nothing
-  // logged" and left the review screen blank.
-  return chatJson(prompt, 4000);
+  // logged" and left the review screen blank. A 50-line class still blew
+  // through 4,000, so the cap sits near gpt-4o's 16k output limit.
+  const result = await chatJson(prompt, 12000);
+  if (result && !Array.isArray(result.lines)) {
+    const arr = Object.values(result).find(Array.isArray);
+    return { lines: arr || [] };
+  }
+  return result;
+}
+
+// Deterministic backup for extractExercisesFromNotesV2 — reads plain
+// "<number> [cal|m|km|reps] <movement> [<weight>kg]" lines, the way most
+// sessions are typed ("10 burpees", "10 cal assault bike", "250m row erg",
+// "20 KB 24kg American Swing", "5 deadlift barbell 50k"), with section
+// headers ("warm up", "work out", "then", "core") setting the part. Used only
+// when the model returns nothing, so a failed AI read never blanks the review
+// screen. No round counting: each written line is one interval, which gives
+// the same totals.
+const FREEFORM_HEADER_PART = [
+  [/^warm[\s-]?up\b/i, 'warmup'],
+  [/^(work[\s-]?out|main|wod|metcon|strength)\b/i, 'main'],
+  [/^(then|finisher|after)\b/i, 'finisher'],
+  [/^(core|abs)\b/i, 'core'],
+  [/^cool[\s-]?down\b/i, 'cooldown'],
+];
+const FREEFORM_WEIGHT_RE = /@?\s*(\d+(?:\.\d+)?)\s*(kgs?|kb|k|lbs?)\b/i;
+
+function freeformTitle(name) {
+  return name.split(/\s+/).filter(Boolean)
+    .map(w => (/^(kb|db|bb)$/i.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(' ');
+}
+
+export function parseFreeformWorkoutNotes(notes) {
+  const lines = [];
+  let part = 'main';
+  for (const rawLine of (notes || '').split('\n')) {
+    let text = rawLine.trim().replace(/^[-*•]\s*/, '');
+    if (!text) continue;
+
+    const header = FREEFORM_HEADER_PART.find(([re]) => re.test(text));
+    if (header) {
+      part = header[1];
+      text = text.replace(header[0], '').replace(/^[\s:,-]+/, '');
+      if (!text) continue;
+    }
+
+    const m = text.match(/^(?:(\d+)\s*[x×]\s*)?(\d+(?:\.\d+)?)\s*(cal(?:ories)?|kcal|km|m|reps?|min(?:s|utes)?|sec(?:s|onds)?)?\b\s*(.*)$/i);
+    if (!m) continue;
+    const intervals = m[1] ? parseInt(m[1], 10) : 1;
+    const qty = parseFloat(m[2]);
+    const unit = (m[3] || '').toLowerCase();
+    let rest = m[4] || '';
+
+    let weightKg = null;
+    const w = rest.match(FREEFORM_WEIGHT_RE);
+    if (w) {
+      weightKg = /^lb/i.test(w[2]) ? Math.round(parseFloat(w[1]) * 0.4536 * 10) / 10 : parseFloat(w[1]);
+      rest = rest.replace(w[0], ' ');
+    }
+    // Leading/trailing equipment words ("KB 24kg American Swing", "deadlift
+    // barbell 50k") are dropped so the name can match a library entry —
+    // except "... over barbell", where the bar is the movement.
+    let words = rest.replace(/[@,:]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    const isGear = wd => /^(kb|db|bb|kettlebells?|dumbbells?|barbell)$/i.test(wd || '');
+    while (words.length > 1 && isGear(words[0])) words.shift();
+    while (words.length > 1 && isGear(words[words.length - 1]) && !/^over$/i.test(words[words.length - 2])) words.pop();
+    const exercise = freeformTitle(words.join(' '));
+    if (!exercise || !/[a-z]/i.test(exercise)) continue;
+
+    const line = { part, exercise, intervals, reps: null, distanceM: null, calories: null, weightKg, timeSec: null, notes: null };
+    if (/^(cal|kcal)/.test(unit)) line.calories = qty;
+    else if (unit === 'km') line.distanceM = qty * 1000;
+    else if (unit === 'm') line.distanceM = qty;
+    else if (/^min/.test(unit)) line.timeSec = qty * 60;
+    else if (/^sec/.test(unit)) line.timeSec = qty;
+    else line.reps = qty;
+    lines.push(line);
+  }
+  return lines;
 }
 
 const V2_PART_ORDER = ['warmup', 'main', 'finisher', 'core', 'cooldown'];
