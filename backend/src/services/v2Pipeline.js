@@ -2,7 +2,7 @@ import admin from 'firebase-admin';
 import { collections, docToObj } from './firebase.js';
 import { listLibrary, resolveExercisesAgainstLibrary } from './exerciseLibrary.js';
 import { getStationReferences } from './stationReferences.js';
-import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part, splitStravaRunBlock } from './claude.js';
+import { extractExercisesFromNotesV2, ensureRunLines, normalizeV2Part, splitStravaRunBlock, parseFreeformWorkoutNotes } from './claude.js';
 import { scoreSession, linesFromExtractionV2 } from './scoring.js';
 import { recomputeDailyTotal } from './dailyTotals.js';
 
@@ -32,9 +32,15 @@ export async function extractV2ForSession(session, library) {
   // sees the rest, so dozens of lap rows can't drown out the other work.
   const { runLines, otherNotes } = splitStravaRunBlock(session.notes);
   const modelNotes = runLines.length ? otherNotes : session.notes;
-  const raw = modelNotes?.trim()
+  let raw = modelNotes?.trim()
     ? await extractExercisesFromNotesV2({ type: session.type, notes: modelNotes })
     : { lines: [] };
+  // The AI read failing or coming back empty on notes that plainly list
+  // movements falls back to a line-by-line parse rather than a blank review.
+  if (!raw?.lines?.length) {
+    const fallback = parseFreeformWorkoutNotes(modelNotes);
+    if (fallback.length) raw = { lines: fallback };
+  }
   if (!raw) throw new Error("Couldn't read the session notes (AI extraction failed)");
   // Filtered before resolving so `lines` and `resolvedLines` stay
   // index-aligned — resolveExercisesAgainstLibrary silently drops any entry

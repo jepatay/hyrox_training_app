@@ -193,3 +193,30 @@ test('ensureRunLines adds Strava laps even when the session is not typed running
   assert.equal(result[0].exercise, 'Thrusters');
   assert.equal(result.filter(l => l.exercise === 'Run').length, 4);
 });
+
+test('parseFreeformWorkoutNotes reads a typed class line by line when the AI read comes back empty', async () => {
+  const { parseFreeformWorkoutNotes } = await import('./claude.js');
+  const notes = [
+    'warm up', '10 burpees', '10 cal assault bike', '',
+    'work out', '20 KB 24kg American Swing', '25 DB 18kb snatch', '250m row erg',
+    '5 deadlift barbell 50k', '5 burpees over barbell', '30 wallballs 10kg',
+    'Then 100 thrusters KB 12kg',
+  ].join('\n');
+  const lines = parseFreeformWorkoutNotes(notes);
+  const by = name => lines.find(l => l.exercise === name);
+  assert.equal(lines.length, 9);
+  assert.equal(by('Burpees').part, 'warmup');
+  assert.equal(by('Assault Bike').calories, 10);
+  assert.deepEqual([by('American Swing').reps, by('American Swing').weightKg, by('American Swing').part], [20, 24, 'main']);
+  assert.equal(by('Snatch').weightKg, 18);
+  assert.equal(by('Row Erg').distanceM, 250);
+  assert.equal(by('Deadlift').weightKg, 50);
+  assert.ok(by('Burpees Over Barbell'));
+  assert.equal(by('Thrusters').part, 'finisher');
+  assert.equal(by('Thrusters').weightKg, 12);
+});
+
+test('parseFreeformWorkoutNotes ignores Strava summary rows and prose', async () => {
+  const { parseFreeformWorkoutNotes } = await import('./claude.js');
+  assert.deepEqual(parseFreeformWorkoutNotes('Avg pace: 4:55/km\nCalories: 613 kcal\nRunning intervals\nFelt good today'), []);
+});
