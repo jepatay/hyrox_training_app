@@ -59,6 +59,60 @@ function ageFromBirthday(birthday) {
   return isNaN(age) ? null : age;
 }
 
+function sessionLoadOf(s) {
+  return s.sessionLoad || (s.rpe && s.duration ? Math.round(s.rpe * s.duration) : null);
+}
+
+function median(nums) {
+  if (!nums.length) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Sizes the session against the athlete's own recent sessions so the coach's
+// tone matches what actually happened — a 5-minute warm-up must not be
+// praised like a full workout.
+export function classifySessionSize(session, recentSessions = []) {
+  const duration = Number(session.duration) || null;
+  const load = sessionLoadOf(session);
+  const typicalDuration = median(recentSessions.map(s => Number(s.duration)).filter(n => n > 0));
+  const typicalLoad = median(recentSessions.map(sessionLoadOf).filter(n => n > 0));
+
+  let ratio = null;
+  if (load && typicalLoad) ratio = load / typicalLoad;
+  else if (duration && typicalDuration) ratio = duration / typicalDuration;
+
+  let size = 'unknown';
+  if ((duration && duration <= 15) || (ratio != null && ratio < 0.4)) size = 'very_light';
+  else if ((duration && duration <= 30) || (ratio != null && ratio < 0.7)) size = 'light';
+  else if (ratio != null && ratio > 1.3) size = 'big';
+  else if (ratio != null || duration) size = 'typical';
+
+  return { size, duration, load, typicalDuration, typicalLoad, ratio };
+}
+
+function sessionSizeBlock(session, recentSessions) {
+  const c = classifySessionSize(session, recentSessions);
+  const fmt = n => (n == null ? '?' : Math.round(n));
+  const facts = `Duration ${fmt(c.duration)} min, load ${fmt(c.load)} vs the athlete's typical recent session of ${fmt(c.typicalDuration)} min, load ${fmt(c.typicalLoad)}${c.ratio != null ? ` (≈${Math.round(c.ratio * 100)}% of typical)` : ''}.`;
+  const verdict = {
+    very_light: 'VERY LIGHT — a warm-up-sized or cut-short session. Say so plainly. Do NOT praise it, do NOT call it impressive/great/strong, and do NOT claim it built fitness, an "aerobic engine" or race readiness. Keep feedback to 2-3 sentences: acknowledge it was short, note whether that matters given recent load and upcoming objectives, and say what to do next.',
+    light: 'LIGHT — below the athlete\'s normal volume. Describe it as a light/short session; no superlatives, no claims of meaningful fitness gains.',
+    typical: 'TYPICAL — normal volume for this athlete. Praise only something specific the data shows went well.',
+    big: 'BIG — clearly above the athlete\'s normal volume. Acknowledging the work is fair, but tie it to the data.',
+    unknown: 'UNKNOWN — duration/load not logged. Judge the size from the notes (total reps, distances); if they describe a small amount of work, treat it as a light session.',
+  }[c.size];
+  return `SESSION SIZE (computed — trust this over your own impression):
+${facts}
+Verdict: ${verdict}
+
+HONESTY RULES:
+- Calibrate tone to the session size above. Be realistic, not cheerleading. No stock openers like "Impressive work", "Great job", "Awesome session".
+- Never praise effort, technique, intensity or pacing unless the notes actually describe it. Do not invent details.
+- If the session was short or low volume, it's fine to say it simply didn't move the needle much.`;
+}
+
 export async function generateCoachingFeedback({ session, recentSessions, objectives, venueNotes, knowledge }) {
   const recentSummary = recentSessions
     .slice(0, 7)
@@ -114,7 +168,9 @@ ${knowledgeBlock}
 
 Also draw on current sports science and best practices for HYROX and endurance training to enrich your feedback.
 
-Write 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.
+${sessionSizeBlock(session, recentSessions)}
+
+Write up to 3-4 sentences of sharp, specific, personal coaching feedback (fewer for a short session). Reference their actual data. Be direct and honest — like a coach who knows them well and doesn't sugar-coat.
 
 DO NOT invent precision the data doesn't support. If the notes only give a TOTAL time for a round covering several exercises, that tells you the round as a whole was faster or slower — it does NOT tell you which specific exercise within it changed pace, felt different, or caused the difference. Only attribute a pacing observation to one particular movement if the notes actually break out that movement's own time/reps/pace separately. Otherwise, comment at the level the data actually supports (e.g. "round 3 was your slowest" — not "the burpees in round 3 were slower").
 
@@ -170,7 +226,9 @@ Your initial feedback to the athlete:
 Athlete's reply:
 "${userReply}"
 
-Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.`;
+${sessionSizeBlock(session, recentSessions)}
+
+Write a single consolidated "Final Coaching Note" — 2-5 sentences, matched to the session size — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.`;
 
   return chat(prompt, 450);
 }
