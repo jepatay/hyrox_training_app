@@ -520,7 +520,7 @@ Return:
       "intervals": <number — how many times this exact effort was repeated (e.g. "3 rounds of 20 wall balls" -> intervals: 3, reps: 20 per round; "10 x 200m ski repeats" -> intervals: 10, distanceM: 200 per repeat). 1 if it happened once. Apply the same round-counting rule as always: if a block of movements visibly repeats in the text (numbered rounds, or the same block appearing back-to-back) without saying so explicitly, count the repeats yourself.>,
       "reps": <number or null — the PER-INTERVAL rep count (not multiplied by intervals)>,
       "distanceM": <number or null — the PER-INTERVAL distance in meters (not multiplied by intervals)>,
-      "calories": <number or null — the PER-INTERVAL calories for a cardio machine reading (assault bike/echo bike/rower), not multiplied by intervals>,
+      "calories": <number or null — the PER-INTERVAL calories for a cardio machine reading (echo/assault bike, bike erg, rower), not multiplied by intervals>,
       "weightKg": <number or null — ALWAYS convert to kilograms (1 lb = 0.4536 kg)>,
       "timeSec": <number or null — the time taken for ONE interval, in seconds, ONLY if the notes state a time or pace for it (e.g. "200m in 32 seconds" -> timeSec: 32; "5km in 25:00" -> timeSec: 1500). Never compute or estimate a time/pace yourself — leave null if the notes don't state one.>,
       "notes": "<any other relevant detail or null>"
@@ -529,6 +529,8 @@ Return:
 }
 
 Only include what is explicitly mentioned. Return empty lines array if nothing structured is mentioned.
+
+BIKES — two different machines, never merge them: an Echo bike / Assault bike / air bike / fan bike (arms AND legs, usually logged in calories) is named "Echo Bike" (or "Assault Bike" if that's what the notes say); a Bike Erg / spin bike / stationary bike (legs only, usually logged in meters) is named "Bike Erg". If the notes just say "bike" with no machine, use "Bike Erg".
 
 RUN LAPS/SPLITS — "Lap 1", "Lap 2", "Km 3", "Split 4" etc. (e.g. Strava lap data) are segments of a run, never exercises of their own. Name every such line "Run" (one line per lap is fine, each keeping its own distance/time).
 
@@ -764,14 +766,22 @@ export function parseExtractionSummaryV2(text) {
 const STRAVA_LAP_HEADER_RE = /^Laps \(\d+\):/i;
 const STRAVA_SPLIT_HEADER_RE = /^Km splits:/i;
 const STRAVA_LAP_ROW_RE = /^\s*Lap\s+\d+:\s*([\d.]+)\s*m.*?\((\d+):(\d{2})\)/i;
-const STRAVA_SPLIT_ROW_RE = /^\s*km\s+\d+:\s*(\d+):(\d{2})\/km/i;
+// "km 4: 700m @ 4:33/km (3:11)" (current) or "km 4: 4:33/km" (older notes,
+// which carried no distance — read as a full km).
+const STRAVA_SPLIT_ROW_RE = /^\s*km\s+\d+:\s*(?:([\d.]+)\s*m\s*@\s*)?(\d+):(\d{2})\/km(?:.*?\((?:(\d+):)?(\d+):(\d{2})\))?/i;
+// Summary lines strava.js writes around the lap block ("Distance: 3.70 km",
+// "Calories: 327 kcal", HR zone rows…). They describe the same run, so they
+// leave the model's input with it — otherwise "Distance: 3.70 km" becomes a
+// second Run line and "Calories: 327 kcal" a cardio machine.
+const STRAVA_STAT_RE = /^\s*(Distance|Moving time|Run type|Avg pace|Elevation|Avg HR|Avg cadence|Calories|PRs in this run|HR zones|(Recovery|Aerobic|Tempo|Threshold|Anaerobic|Zone \d+)):/i;
 // Standing recovery between reps (e.g. 28 m in 1:01) — the watch keeps a lap
 // running but nobody's running, so it isn't a run segment.
 const STRAVA_REST_PACE_SEC_PER_KM = 15 * 60;
 
-function readStravaBlock(lines, headerRe, rowRe, toLine) {
-  const headerIdx = lines.findIndex(l => headerRe.test(l.trim()));
-  if (headerIdx === -1) return null;
+function readStravaBlock(lines, from, headerRe, rowRe, toLine) {
+  const offset = lines.slice(from).findIndex(l => headerRe.test(l.trim()));
+  if (offset === -1) return null;
+  const headerIdx = from + offset;
   const parsed = [];
   let end = headerIdx + 1;
   for (; end < lines.length; end++) {
@@ -786,24 +796,48 @@ function readStravaBlock(lines, headerRe, rowRe, toLine) {
   return { start: headerIdx, end, lines: parsed };
 }
 
-// Returns the Strava run lines plus the notes with that block cut out — what's
-// left (title, totals, "Then 100 thrusters…") is what the model still reads.
+function splitRowToLine(m) {
+  const distanceM = m[1] ? parseFloat(m[1]) : 1000;
+  const paceSec = parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+  const timeSec = m[6]
+    ? (parseInt(m[4] || '0', 10) * 3600) + parseInt(m[5], 10) * 60 + parseInt(m[6], 10)
+    : Math.round(paceSec * distanceM / 1000);
+  return { part: 'main', exercise: 'Run', intervals: 1, distanceM, timeSec };
+}
+
+function nextStravaBlock(lines, from) {
+  const laps = readStravaBlock(lines, from, STRAVA_LAP_HEADER_RE, STRAVA_LAP_ROW_RE, m => ({
+    part: 'main', exercise: 'Run', intervals: 1,
+    distanceM: parseFloat(m[1]), timeSec: parseInt(m[2], 10) * 60 + parseInt(m[3], 10),
+  }));
+  const splits = readStravaBlock(lines, from, STRAVA_SPLIT_HEADER_RE, STRAVA_SPLIT_ROW_RE, splitRowToLine);
+  if (!laps) return splits;
+  if (!splits) return laps;
+  return laps.start <= splits.start ? laps : splits;
+}
+
+// Returns the Strava run lines plus the notes with every lap/split block (and
+// the stat lines around it) cut out — what's left (the athlete's own write-up,
+// "Then 100 thrusters…") is what the model still reads. A note can hold more
+// than one block, e.g. a typed HYROX session with a pasted Strava run after it.
 export function splitStravaRunBlock(notes) {
   if (!notes) return { runLines: [], otherNotes: notes || '' };
   const lines = notes.split('\n');
-  const block =
-    readStravaBlock(lines, STRAVA_LAP_HEADER_RE, STRAVA_LAP_ROW_RE, m => ({
-      part: 'main', exercise: 'Run', intervals: 1,
-      distanceM: parseFloat(m[1]), timeSec: parseInt(m[2], 10) * 60 + parseInt(m[3], 10),
-    })) ||
-    readStravaBlock(lines, STRAVA_SPLIT_HEADER_RE, STRAVA_SPLIT_ROW_RE, m => ({
-      part: 'main', exercise: 'Run', intervals: 1,
-      distanceM: 1000, timeSec: parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
-    }));
-  if (!block?.lines.length) return { runLines: [], otherNotes: notes };
-  const runLines = block.lines.filter(l =>
-    l.distanceM > 0 && (!l.timeSec || (l.timeSec * 1000) / l.distanceM < STRAVA_REST_PACE_SEC_PER_KM));
-  const otherNotes = [...lines.slice(0, block.start), ...lines.slice(block.end)].join('\n');
+  const drop = new Set();
+  const runLines = [];
+  let from = 0;
+  for (let block; (block = nextStravaBlock(lines, from)); from = block.end) {
+    if (!block.lines.length) continue;
+    let start = block.start;
+    while (start > 0 && (STRAVA_STAT_RE.test(lines[start - 1]) || !lines[start - 1].trim())) start--;
+    let end = block.end;
+    while (end < lines.length && (STRAVA_STAT_RE.test(lines[end]) || !lines[end].trim())) end++;
+    for (let i = start; i < end; i++) drop.add(i);
+    runLines.push(...block.lines.filter(l =>
+      l.distanceM > 0 && (!l.timeSec || (l.timeSec * 1000) / l.distanceM < STRAVA_REST_PACE_SEC_PER_KM)));
+  }
+  if (!runLines.length) return { runLines: [], otherNotes: notes };
+  const otherNotes = lines.filter((_, i) => !drop.has(i)).join('\n');
   return { runLines, otherNotes };
 }
 
@@ -813,16 +847,25 @@ export function parseStravaLapsFromNotes(notes) {
 
 // Adds run lines the extraction missed. Strava lap/split data, when present,
 // is authoritative for the run whatever the session type (an interval run
-// followed by thrusters is often logged as HYROX training) and replaces any
-// "Run" the model produced, so the run is never counted twice. Without it,
-// a running session whose extraction found no run falls back to one line
-// from the session's total `runningDistance` (and `duration`, if logged),
-// which carries no pace and scores at a neutral factor.
+// followed by thrusters is often logged as HYROX training). On a session that
+// came from Strava, it replaces any "Run" the model produced — the athlete's
+// text there describes that same activity, so the run is never counted twice.
+// When the lap block was pasted into a typed session instead, the model never
+// saw it (splitStravaRunBlock cuts it out), so its runs are other runs (the
+// 8 x 500 m of a HYROX sim) and both are kept. Without lap data, a running
+// session whose extraction found no run falls back to one line from the
+// session's total `runningDistance` (and `duration`, if logged), which carries
+// no pace and scores at a neutral factor.
 export function ensureRunLines(lines, session) {
   const base = lines || [];
   const stravaRuns = parseStravaLapsFromNotes(session?.notes);
   if (stravaRuns.length) {
-    return [...base.filter(l => !/^run$/i.test((l.exercise || '').trim())), ...stravaRuns];
+    const fromStrava = session?.stravaActivityId || session?.syncedFromStrava;
+    const isRun = l => /^run$/i.test((l.exercise || '').trim());
+    // A number-less "Run" ("Then I ran the following with Eskil") is the
+    // model naming the pasted block it can no longer see — the laps cover it.
+    const kept = base.filter(l => !isRun(l) || (!fromStrava && (l.distanceM || l.timeSec)));
+    return [...kept, ...stravaRuns];
   }
 
   const hasRun = base.some(l => /run/i.test(l.exercise || ''));

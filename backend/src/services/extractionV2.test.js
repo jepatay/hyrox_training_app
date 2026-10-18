@@ -115,9 +115,9 @@ test('ensureRunLines keeps a model-found run when there is no Strava lap data', 
   assert.deepEqual(ensureRunLines(lines, session), lines);
 });
 
-test('ensureRunLines lets Strava laps replace a model-found run (no double count)', () => {
+test('ensureRunLines lets Strava laps replace a model-found run on a Strava session (no double count)', () => {
   const lines = [{ part: 'main', exercise: 'Run', intervals: 1, distanceM: 5000 }];
-  const session = { type: 'running', notes: 'Laps (2):\n  Lap 1: 1000m @ 4:00/km (4:00)\n  Lap 2: 1000m @ 4:00/km (4:00)' };
+  const session = { type: 'running', stravaActivityId: 123, notes: 'Laps (2):\n  Lap 1: 1000m @ 4:00/km (4:00)\n  Lap 2: 1000m @ 4:00/km (4:00)' };
   const result = ensureRunLines(lines, session);
   assert.equal(result.length, 2);
   assert.ok(result.every(l => l.distanceM === 1000));
@@ -219,4 +219,67 @@ test('parseFreeformWorkoutNotes reads a typed class line by line when the AI rea
 test('parseFreeformWorkoutNotes ignores Strava summary rows and prose', async () => {
   const { parseFreeformWorkoutNotes } = await import('./claude.js');
   assert.deepEqual(parseFreeformWorkoutNotes('Avg pace: 4:55/km\nCalories: 613 kcal\nRunning intervals\nFelt good today'), []);
+});
+
+const HYROX_SIM_PLUS_PASTED_RUN = `warm-up
+15 air squats
+
+workout
+500m run at around 4'10 per km tempo
+50 cal Echo bike
+750m bike erg
+
+finisher
+125 cal echo bike in 12 minutes
+
+
+Then I ran the following with Eskil
+Avg pace: 4:40/km
+Elevation: +20m / -3m
+Calories: 327 kcal
+
+Km splits:
+  km 1: 4:54/km
+  km 2: 4:31/km · -10m
+  km 3: 4:40/km · +10m
+  km 4: 4:33/km
+
+Then i did again 100 cal Echo bike in 7 minutes and 30 seconds`;
+
+test('a Strava run pasted into a typed session is kept alongside the typed runs', async () => {
+  const { splitStravaRunBlock } = await import('./claude.js');
+  const { runLines, otherNotes } = splitStravaRunBlock(HYROX_SIM_PLUS_PASTED_RUN);
+  assert.equal(runLines.length, 4);
+  assert.ok(otherNotes.includes('100 cal Echo bike'));
+  assert.ok(otherNotes.includes('500m run'));
+  assert.ok(!otherNotes.includes('Calories: 327'), 'Strava stat lines leave the model input');
+  assert.ok(!otherNotes.includes('Avg pace'));
+
+  const modelLines = [
+    { part: 'main', exercise: 'Run', intervals: 8, distanceM: 500, timeSec: 125 },
+    { part: 'finisher', exercise: 'Run', intervals: 1, distanceM: null, timeSec: null },
+  ];
+  const result = ensureRunLines(modelLines, { type: 'hyrox_training', notes: HYROX_SIM_PLUS_PASTED_RUN });
+  const runs = result.filter(l => l.exercise === 'Run');
+  assert.equal(runs.length, 5, '8x500m kept + 4 km splits, number-less Run dropped');
+  assert.equal(runs[0].intervals, 8);
+});
+
+test('new-format km splits carry the partial last split distance and time', () => {
+  const notes = 'Km splits:\n  km 1: 1000m @ 4:54/km (4:54)\n  km 4: 700m @ 4:33/km (3:11)';
+  const splits = parseStravaLapsFromNotes(notes);
+  assert.equal(splits[1].distanceM, 700);
+  assert.equal(splits[1].timeSec, 191);
+});
+
+test('Echo/Assault bike and Bike Erg resolve to different library entries', async () => {
+  const { matchExercise } = await import('./exerciseLibrary.js');
+  const library = [
+    { key: 'assaultBike', label: 'Echo / Assault Bike', aliases: ['assault bike', 'echo bike', 'air bike'] },
+    { key: 'bikeErg', label: 'Bike Erg', aliases: ['bike erg', 'bikeerg', 'spin bike', 'stationary bike'] },
+  ];
+  assert.equal(matchExercise('Echo Bike', library)?.key, 'assaultBike');
+  assert.equal(matchExercise('Assault Bike', library)?.key, 'assaultBike');
+  assert.equal(matchExercise('Bike Erg', library)?.key, 'bikeErg');
+  assert.equal(matchExercise('BikeErg', library)?.key, 'bikeErg');
 });

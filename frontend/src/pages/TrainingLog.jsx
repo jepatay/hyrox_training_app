@@ -136,13 +136,12 @@ export default function TrainingLog() {
   async function handleStravaSync() {
     setSyncing(true);
     try {
-      const [{ imported, merged, total }] = await Promise.all([
-        stravaApi.sync(),
-        stravaApi.backfillNotes(),
-      ]);
+      // One after the other: both hit Strava's ~100 requests / 15 min limit.
+      const { imported, merged, total } = await stravaApi.sync();
+      const { rateLimited } = await stravaApi.backfillNotes();
       toast({
         title: `Synced ${imported} new ${imported === 1 ? 'activity' : 'activities'}`,
-        description: `${merged ? `${merged} merged into existing sessions. ` : ''}${total - imported - (merged || 0)} already imported. Notes refreshed.`,
+        description: `${merged ? `${merged} merged into existing sessions. ` : ''}${total - imported - (merged || 0)} already imported. ${rateLimited ? 'Strava rate limit reached — some notes not refreshed yet, sync again in 15 min.' : 'Notes refreshed.'}`,
       });
       load();
     } catch (err) {

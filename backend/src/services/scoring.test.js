@@ -223,3 +223,11 @@ test('vest: factor is floored at 1.0 (never a penalty) and never negative', () =
   const s = scoreSession([{ exerciseKey: 'run', qty: 8000, distanceM: 8000 }], LIBRARY, REFERENCES, null, { weightVestKg: 0 });
   assert.equal(round3(s.re.run), 1.0);
 });
+
+test('a bike erg logged with a time gets no run-pace factor, and a cal reading converts on an m-unit machine', () => {
+  const lib = [{ key: 'bikeErg', unit: 'm', metersPerCal: 30, credits: { running: 0.2 }, status: 'approved' }];
+  const fast = scoreSession([{ exerciseKey: 'bikeErg', qty: 750, distanceM: 750, timeSec: 80 }], lib, REFERENCES);
+  assert.equal(fast.lines[0].credits.run.factor, 1);
+  const cal = scoreSession([{ exerciseKey: 'bikeErg', qty: null, calories: 25 }], lib, REFERENCES);
+  assert.equal(cal.lines[0].qty, 750);
+});

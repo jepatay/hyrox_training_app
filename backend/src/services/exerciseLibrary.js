@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { collections } from './firebase.js';
+import { collections, docToObj } from './firebase.js';
 import { STATION_KEYS, suggestExerciseStationCredits } from './claude.js';
 
 // The single source of truth for "what does this exercise count toward, and
@@ -10,6 +10,12 @@ import { STATION_KEYS, suggestExerciseStationCredits } from './claude.js';
 // label, or alias) gets a new 'pending' entry created automatically, with an
 // AI-suggested credit mapping — visible and editable on the Exercise Library
 // page, but excluded from scoring until the athlete approves it.
+// The Echo/Assault bike (fan bike, arms + legs) and the Bike Erg (a regular
+// legs-only stationary bike) used to share one entry. They're different
+// machines with different transfer, so each has its own alias list.
+const ASSAULT_BIKE_ALIASES = ['assault bike', 'echo bike', 'echo', 'air bike', 'airbike', 'assault airbike', 'fan bike', 'rogue echo bike'];
+const BIKE_ERG_ALIASES = ['bike erg', 'bikeerg', 'bike', 'spin bike', 'spinning', 'indoor cycling', 'indoor bike', 'stationary bike', 'exercise bike', 'wattbike', 'cycling'];
+
 const BUILTIN_EXERCISES = [
   { key: 'sledPush', label: 'Sled Push', aliases: ['sled push'], unit: 'm', credits: { sled_push: 1 } },
   { key: 'sledPull', label: 'Sled Pull', aliases: ['sled pull'], unit: 'm', credits: { sled_pull: 1 } },
@@ -35,10 +41,16 @@ const BUILTIN_EXERCISES = [
     reasoning: 'Explosive hip-hinge drive transfers partially to the broad jump\'s hip extension and general posterior-chain conditioning for lunges.',
   },
   {
-    key: 'assaultBike', label: 'Assault Bike',
-    aliases: ['assault bike', 'air bike', 'airbike', 'fan bike', 'echo bike', 'bike erg', 'spin bike', 'indoor cycling', 'stationary bike', 'cycling'],
+    key: 'assaultBike', label: 'Echo / Assault Bike',
+    aliases: ASSAULT_BIKE_ALIASES,
     unit: 'cal', metersPerCal: 12, credits: { running: 0.3, skierg: 0.5, row_erg: 0.4 },
-    reasoning: 'Full-body cardio machine — real aerobic output, shared across running/ski/row rather than any one station.',
+    reasoning: 'Fan bike driven by arms AND legs (Echo, Assault, air bike) — real full-body aerobic output, shared across running/ski/row rather than any one station.',
+  },
+  {
+    key: 'bikeErg', label: 'Bike Erg',
+    aliases: BIKE_ERG_ALIASES,
+    unit: 'm', metersPerCal: 30, credits: { running: 0.2, row_erg: 0.1 },
+    reasoning: 'Legs-only stationary bike (Concept2 BikeErg, spin bike) — aerobic leg work with no arm drive, so less transfer than the Echo/Assault bike. Bike meters come cheap (about 2x rower meters for the same effort), hence the low weights.',
   },
   { key: 'other', label: 'Other', aliases: [], unit: 'reps', credits: {} },
 
@@ -167,9 +179,61 @@ async function applyCreditsV2Corrections() {
   }));
 }
 
+// One-time split of the old combined bike entry: the stored assaultBike doc
+// still lists "bike erg", "spin bike", "cycling"… as aliases, which would keep
+// matching before the new bikeErg entry. Those move off it (any alias the
+// athlete added stays), and session lines already resolved to assaultBike
+// from a Bike Erg-type name are repointed to bikeErg and re-scored.
+async function applyBikeSplit() {
+  const ref = collections.exerciseLibrary().doc('assaultBike');
+  const doc = await ref.get();
+  if (!doc.exists || doc.data().bikeSplit === true) return;
+  const moved = new Set(BIKE_ERG_ALIASES);
+  const aliases = [...new Set([
+    ...(doc.data().aliases || []).filter(a => !moved.has(a.toLowerCase())),
+    ...ASSAULT_BIKE_ALIASES,
+  ])];
+  await ref.update({
+    label: 'Echo / Assault Bike',
+    aliases,
+    reasoning: BUILTIN_EXERCISES.find(e => e.key === 'assaultBike').reasoning,
+    bikeSplit: true,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  repointBikeErgLines().catch(err => console.error('Bike Erg split: re-pointing session lines failed:', err));
+}
+
+export function isBikeErgName(name) {
+  return BIKE_ERG_ALIASES.includes((name || '').trim().toLowerCase());
+}
+
+async function repointBikeErgLines() {
+  const snap = await collections.sessions().get();
+  const affected = [];
+  for (const doc of snap.docs) {
+    const lines = doc.data().extractionV2?.lines || [];
+    if (!lines.some(l => l.libraryKey === 'assaultBike' && isBikeErgName(l.exercise))) continue;
+    await doc.ref.update({
+      'extractionV2.lines': lines.map(l => (l.libraryKey === 'assaultBike' && isBikeErgName(l.exercise) ? { ...l, libraryKey: 'bikeErg' } : l)),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    affected.push(doc.id);
+  }
+  if (!affected.length) return;
+  // Imported here, not at the top: v2Pipeline imports this module.
+  const { scoreOneSession, getActiveObjective } = await import('./v2Pipeline.js');
+  const { getStationReferences } = await import('./stationReferences.js');
+  const [library, references, objective] = await Promise.all([listLibrary(), getStationReferences(), getActiveObjective()]);
+  for (const id of affected) {
+    const session = docToObj(await collections.sessions().doc(id).get());
+    if (session) await scoreOneSession(session, library, references, objective);
+  }
+}
+
 export async function listLibrary() {
   await ensureBuiltinsSeeded();
   await applyCreditsV2Corrections();
+  await applyBikeSplit();
   const snap = await collections.exerciseLibrary().orderBy('label').get();
   return snap.docs.map(d => ({ key: d.id, ...d.data() }));
 }
