@@ -536,6 +536,8 @@ BIKES — two different machines, never merge them: an Echo bike / Assault bike 
 
 RUN LAPS/SPLITS — "Lap 1", "Lap 2", "Km 3", "Split 4" etc. (e.g. Strava lap data) are segments of a run, never exercises of their own. Name every such line "Run" (one line per lap is fine, each keeping its own distance/time).
 
+INTERLEAVED REPEATS — when the same movement appears on separate lines split up by other movements (e.g. a HYROX sim with a 500m run between every station), output ONE line per written occurrence, in order, each with intervals: 1. Never merge them into a single line with a counted "intervals" — that's where runs get miscounted.
+
 ROUND-COUNTING — apply the same rule regardless of section: COUNT how many times a block of movements actually appears (explicit count, numbered rounds, or repeated back-to-back blocks with no count stated) and reflect it in "intervals" with the PER-INTERVAL numbers, never a pre-multiplied total. If a movement's weight changes partway through repeated blocks, output SEPARATE lines per weight bracket.`;
   // A long session easily runs past 1,400 output tokens; a truncated reply
   // fails JSON.parse and comes back null, which used to look like "nothing
