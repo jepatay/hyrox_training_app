@@ -137,9 +137,24 @@ router.post('/:id/extract', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Not found' });
     if (!session.notes?.trim()) return res.json({ extractedExercises: null, summaryText: '' });
 
-    const rawExtracted = await extractExercisesFromNotes({ type: session.type, notes: session.notes });
-    const { exercises, library } = await resolveExercisesAgainstLibrary(rawExtracted?.exercises);
-    const extracted = rawExtracted ? { ...rawExtracted, exercises } : null;
+    // Backed by the v2 pipeline (Strava block parsed in code, stat lines kept
+    // away from the model) so a client still on this older endpoint gets the
+    // same read as Log Session — v1's own prompt turned a pasted run's
+    // "Calories: 327 kcal" into "Run: 327 cal" and dropped its 3.7 km.
+    let extractionV2;
+    try {
+      extractionV2 = await extractV2ForSession(session);
+    } catch {
+      return res.status(502).json({ error: "Couldn't read your session right now — please try again." });
+    }
+    const exercises = extractionV2.lines.map(l => ({
+      name: l.exercise, libraryKey: l.libraryKey,
+      sets: l.intervals > 1 ? l.intervals : null,
+      reps: l.reps ?? null, weightKg: l.weightKg ?? null,
+      distanceM: l.distanceM ?? null, calories: l.calories ?? null, notes: l.notes ?? null,
+    }));
+    const library = await listLibrary();
+    const extracted = { exercises };
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
