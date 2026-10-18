@@ -398,7 +398,9 @@ Only include what is explicitly mentioned. Return empty exercises array if nothi
 
 CIRCUITS AND REPEATED ROUNDS — read this carefully, it's the most common source of error:
 Athletes write repeated rounds in many different ways: an explicit "N rounds of the following:" prefix, numbered labels ("Round 1:", "Round 2:", ... "Round N:"), or simply the same (or near-identical) block of exercises appearing multiple times back-to-back with no explicit count or numbering at all (e.g. separated by blank lines, or each just starting with a time like "round, 5 min 51 seconds"). Whatever the format, apply ONE general rule: COUNT how many times each block of exercises actually appears in the text — do not rely on the notes stating a count, and do not guess or under-count — then for every exercise, SUM its reps/distance/calories across ALL of those repetitions into ONE combined total (e.g. an exercise appearing in 4 near-identical blocks has its reps/distance/calories multiplied by 4, not reported as if it happened once — this can be expressed either as sets:4 with the per-round value, or as the single already-multiplied total with sets:1, whichever you're more confident is accurate). If an exercise's weight changes partway through the repeated blocks, output SEPARATE entries per weight bracket, each totaled only across the repetitions logged at that weight. A line that appears only ONCE in the notes (not part of any repeated block) keeps its stated numbers as-is — don't multiply it by the round count of a different, repeated section.`;
-  return chatJson(prompt, 1000);
+  // 1,000 tokens truncated any full HYROX sim mid-JSON, which parsed as
+  // nothing at all — same cap as the v2 extractor.
+  return chatJson(prompt, 12000);
 }
 
 // Turns extracted exercises into one plain-text line per exercise, spelling
@@ -584,6 +586,8 @@ export function parseFreeformWorkoutNotes(notes) {
       if (!text) continue;
     }
 
+    // "12,5m" (comma decimal) and "4 times 125m" read like "12.5m" / "4 x 125m".
+    text = text.replace(/(\d),(\d)/g, '$1.$2').replace(/^(\d+)\s*times\s+/i, '$1x ');
     const m = text.match(/^(?:(\d+)\s*[x×]\s*)?(\d+(?:\.\d+)?)\s*(cal(?:ories)?|kcal|km|m|reps?|min(?:s|utes)?|sec(?:s|onds)?)?\b\s*(.*)$/i);
     if (!m) continue;
     const intervals = m[1] ? parseInt(m[1], 10) : 1;
@@ -597,6 +601,9 @@ export function parseFreeformWorkoutNotes(notes) {
       weightKg = /^lb/i.test(w[2]) ? Math.round(parseFloat(w[1]) * 0.4536 * 10) / 10 : parseFloat(w[1]);
       rest = rest.replace(w[0], ' ');
     }
+    // Pace/load/time descriptions after the name ("run at around 4'10 per
+    // km", "lunges with 22kg DB", "echo bike in 12 minutes") aren't part of it.
+    rest = rest.replace(/\s+(at|with|in)\s.*$/i, '');
     // Leading/trailing equipment words ("KB 24kg American Swing", "deadlift
     // barbell 50k") are dropped so the name can match a library entry —
     // except "... over barbell", where the bar is the movement.
@@ -764,7 +771,8 @@ export function parseExtractionSummaryV2(text) {
 // being left to the model, which on a 30-lap interval session tends to read
 // nothing at all, or only the strength work tacked on after it.
 const STRAVA_LAP_HEADER_RE = /^Laps \(\d+\):/i;
-const STRAVA_SPLIT_HEADER_RE = /^Km splits:/i;
+// Loose on purpose: a hand-pasted run may read "Km splits as follow".
+const STRAVA_SPLIT_HEADER_RE = /^Km splits\b/i;
 const STRAVA_LAP_ROW_RE = /^\s*Lap\s+\d+:\s*([\d.]+)\s*m.*?\((\d+):(\d{2})\)/i;
 // "km 4: 700m @ 4:33/km (3:11)" (current) or "km 4: 4:33/km" (older notes,
 // which carried no distance — read as a full km).
@@ -773,7 +781,7 @@ const STRAVA_SPLIT_ROW_RE = /^\s*km\s+\d+:\s*(?:([\d.]+)\s*m\s*@\s*)?(\d+):(\d{2
 // "Calories: 327 kcal", HR zone rows…). They describe the same run, so they
 // leave the model's input with it — otherwise "Distance: 3.70 km" becomes a
 // second Run line and "Calories: 327 kcal" a cardio machine.
-const STRAVA_STAT_RE = /^\s*(Distance|Moving time|Run type|Avg pace|Elevation|Avg HR|Avg cadence|Calories|PRs in this run|HR zones|(Recovery|Aerobic|Tempo|Threshold|Anaerobic|Zone \d+)):/i;
+const STRAVA_STAT_RE = /^\s*(Distance|Moving time|Run type|Avg pace|Elevation|Avg HR|Avg cadence|Calories|PRs in this run|HR zones|(Recovery|Aerobic|Tempo|Threshold|Anaerobic|Zone \d+))\s*:/i;
 // Standing recovery between reps (e.g. 28 m in 1:01) — the watch keeps a lap
 // running but nobody's running, so it isn't a run segment.
 const STRAVA_REST_PACE_SEC_PER_KM = 15 * 60;

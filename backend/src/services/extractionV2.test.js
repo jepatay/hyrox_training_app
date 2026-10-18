@@ -283,3 +283,59 @@ test('Echo/Assault bike and Bike Erg resolve to different library entries', asyn
   assert.equal(matchExercise('Bike Erg', library)?.key, 'bikeErg');
   assert.equal(matchExercise('BikeErg', library)?.key, 'bikeErg');
 });
+
+const USER_TEST_SESSION = `warm-up
+15 air squats
+15 lunges
+10 pushups
+10 burpess
+
+workout
+500m run at around 4'10 per km tempo
+4 times 125m ski at 1'35 per 500m
+500m run at around 4'10 per km tempo
+50m walking lunges with 22kg DB
+50 cal Echo bike
+750m bike erg
+12,5m sled push 120kg
+100m farmers carry with dual KB 24kg
+
+finisher
+125 cal echo bike in 12 minutes
+
+
+Then I ran the following with Eskil
+Avg pace: 4:40/km
+Distance : 3.7km
+Elevation: +20m / -3m
+Calories: 327 kcal
+Km splits as follow
+  km 1: 4:54/km
+  km 2: 4:31/km · -10m
+  km 3: 4:40/km · +10m
+  km 4: 4:33/km
+
+Then i did again 100 cal Echo bike in 7 minutes and 30 seconds`;
+
+test('hand-typed "Km splits as follow" block and "Distance :" stat are cut from the model input', async () => {
+  const { splitStravaRunBlock } = await import('./claude.js');
+  const { runLines, otherNotes } = splitStravaRunBlock(USER_TEST_SESSION);
+  assert.equal(runLines.length, 4);
+  assert.ok(!otherNotes.includes('Distance'));
+  assert.ok(!otherNotes.includes('km 1'));
+  assert.ok(otherNotes.includes('100 cal Echo bike in 7 minutes'));
+});
+
+test('fallback parser reads comma decimals, "N times", and strips pace/load descriptions from names', async () => {
+  const { parseFreeformWorkoutNotes } = await import('./claude.js');
+  const lines = parseFreeformWorkoutNotes(USER_TEST_SESSION);
+  const by = name => lines.find(l => l.exercise === name);
+  assert.equal(by('Run').distanceM, 500);
+  assert.equal(by('Ski').intervals, 4);
+  assert.equal(by('Ski').distanceM, 125);
+  assert.equal(by('Sled Push').distanceM, 12.5);
+  assert.equal(by('Sled Push').weightKg, 120);
+  assert.equal(by('Walking Lunges').weightKg, 22);
+  assert.equal(by('Bike Erg').distanceM, 750);
+  assert.ok(lines.some(l => l.exercise === 'Echo Bike' && l.calories === 125 && l.part === 'finisher'));
+});
