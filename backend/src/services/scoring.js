@@ -42,12 +42,18 @@ const DEFAULT_LIMITS = { loadCap: 3.0, paceCap: 2.0, floor: 0.25, warmupWeight: 
 // never hand this function raw km), same as `m`.
 function qtyForLine(line, exercise) {
   const unit = exercise.unit || 'reps';
+  // A machine can be logged either way ("50 cal echo bike", "750m bike
+  // erg") — whichever reading the line has is used, calories converted via
+  // metersPerCal, rather than scoring 0 for the "wrong" unit.
   if (unit === 'cal') {
     const cal = Number(line.calories ?? line.qty) || 0;
+    if (!cal && line.distanceM) return Number(line.distanceM) || 0;
     return cal * (exercise.metersPerCal || 10);
   }
   if (unit === 'm' || unit === 'km') {
-    return Number(line.distanceM ?? line.qty) || 0;
+    const dist = Number(line.distanceM ?? line.qty) || 0;
+    if (!dist && line.calories && exercise.metersPerCal) return Number(line.calories) * exercise.metersPerCal;
+    return dist;
   }
   return Number(line.qty) || 0; // reps
 }
@@ -135,6 +141,11 @@ export function scoreSession(lines, library, references, objective, sessionConte
           estimated = true;
           basis = 'no load logged, × 1.0';
         }
+      } else if (PACE_CATEGORIES.has(category) && weight < 1) {
+        // Cross-training credit (a bike crediting running): the line's pace
+        // is a bike pace, not a run pace — comparing it to a run target
+        // would hand a 2x factor to any bike erg logged with a time.
+        basis = 'cross-training, pace not comparable, × 1.0';
       } else if (PACE_CATEGORIES.has(category)) {
         const linePace = paceSecPerKmFor(rawLine);
         const targetPace = targetPaceFor(category, references, objective);

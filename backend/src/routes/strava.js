@@ -142,6 +142,70 @@ router.post('/exchange', async (req, res) => {
 
 const STRAVA_NOTES_MARKER = '\n\n--- Strava data ---\n';
 
+// Strava allows ~100 requests per 15 minutes. Past that it answers with an
+// error body (`{ message: 'Rate Limit Exceeded', errors: [...] }`) that used
+// to be read as if it were the activity — no laps, no pace — and a backfill
+// then overwrote good notes with almost nothing. Anything but a 2xx is null
+// here, and a 429 is flagged so callers can stop instead of burning on.
+class StravaRateLimitError extends Error {}
+
+async function stravaGet(path, accessToken) {
+  const res = await fetch(`https://www.strava.com/api/v3${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 429) throw new StravaRateLimitError('Strava rate limit reached');
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+
+async function fetchActivityDetail(activityId, accessToken) {
+  const [detail, zones, streams] = await Promise.all([
+    stravaGet(`/activities/${activityId}`, accessToken),
+    stravaGet(`/activities/${activityId}/zones`, accessToken).catch(err => { if (err instanceof StravaRateLimitError) throw err; return null; }),
+    stravaGet(`/activities/${activityId}/streams?keys=altitude&key_by_type=true`, accessToken).catch(err => { if (err instanceof StravaRateLimitError) throw err; return null; }),
+  ]);
+  return {
+    detail: detail?.id ? detail : null,
+    zones,
+    elevationLoss: computeElevationLoss(streams?.altitude?.data),
+  };
+}
+
+function formatDuration(totalSec) {
+  const s = Math.round(totalSec || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// One line telling the reader (athlete and AI) what kind of run this was,
+// so a 13 km steady run and 8 x 400 m reps don't read the same. Laps are
+// split into work/recovery at the biggest jump in pace when that jump is
+// large (>= 15% slower); otherwise the run is continuous. Every lap is
+// still listed below — this only summarises, it never hides anything.
+function describeRunShape(laps, totalKm) {
+  const timed = (laps || []).filter(l => l.distance > 0 && l.moving_time > 0)
+    .map(l => ({ distance: l.distance, time: l.moving_time, pace: l.moving_time / (l.distance / 1000) }));
+  if (timed.length >= 3) {
+    const sorted = timed.map(l => l.pace).sort((a, b) => a - b);
+    let gapIdx = -1, gapRatio = 1;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const r = sorted[i + 1] / sorted[i];
+      if (r > gapRatio) { gapRatio = r; gapIdx = i; }
+    }
+    if (gapRatio >= 1.15) {
+      const cutoff = sorted[gapIdx];
+      const work = timed.filter(l => l.pace <= cutoff);
+      const rest = timed.length - work.length;
+      const workDist = work.reduce((s, l) => s + l.distance, 0);
+      const workTime = work.reduce((s, l) => s + l.time, 0);
+      const avgPace = formatPace(workDist / workTime);
+      return `Intervals — ${work.length} work laps (avg ${Math.round(workDist / work.length)}m @ ${avgPace}), ${rest} recovery laps`;
+    }
+  }
+  if (!totalKm) return null;
+  return totalKm >= 12 ? `Continuous long run (${totalKm.toFixed(2)} km)` : `Continuous run (${totalKm.toFixed(2)} km)`;
+}
+
 function formatPace(speedMs) {
   if (!speedMs || speedMs <= 0) return null;
   const secPerKm = 1000 / speedMs;
@@ -175,6 +239,18 @@ function computeElevationLoss(altitudePoints) {
 
 function buildNotes(act, detail, zones, elevationLoss) {
   const lines = [];
+
+  // Distance + time first — the headline numbers the rest builds on.
+  const distanceM = detail?.distance || act.distance;
+  const movingSec = detail?.moving_time || act.moving_time;
+  if (distanceM) lines.push(`Distance: ${(distanceM / 1000).toFixed(2)} km`);
+  if (movingSec) lines.push(`Moving time: ${formatDuration(movingSec)}`);
+
+  const sport = detail?.sport_type || detail?.type || act.sport_type || act.type || '';
+  if (/run/i.test(sport) && distanceM) {
+    const shape = describeRunShape(detail?.laps?.length > 1 ? detail.laps : null, distanceM / 1000);
+    if (shape) lines.push(`Run type: ${shape}`);
+  }
 
   // Avg pace
   const avgPace = formatPace(detail?.average_speed || act.average_speed);
@@ -249,11 +325,14 @@ function buildNotes(act, detail, zones, elevationLoss) {
       lines.push('');
       lines.push('Km splits:');
       const pacesSec = splits.map(s => s.moving_time / Math.max(s.distance / 1000, 0.01));
+      // Each row carries its real distance and time — the last split is
+      // usually partial (3.7 km = 3 full km + 700 m), and counting it as a
+      // whole km overstated the run.
       splits.forEach((s, i) => {
         const pSec = pacesSec[i];
         const pMin = Math.floor(pSec / 60);
         const pSc = Math.round(pSec % 60);
-        let row = `  km ${i + 1}: ${pMin}:${String(pSc).padStart(2, '0')}/km`;
+        let row = `  km ${i + 1}: ${Math.round(s.distance)}m @ ${pMin}:${String(pSc).padStart(2, '0')}/km (${formatDuration(s.moving_time)})`;
         if (s.average_heartrate) row += ` · ${Math.round(s.average_heartrate)} bpm`;
         if (s.elevation_difference && Math.abs(s.elevation_difference) > 3) {
           row += ` · ${s.elevation_difference > 0 ? '+' : ''}${Math.round(s.elevation_difference)}m`;
@@ -368,20 +447,12 @@ router.post('/sync', async (_req, res) => {
         ? parseFloat((act.distance / 1000).toFixed(2))
         : null;
 
-      // Fetch detailed activity (laps, splits, HR) + HR zones + altitude stream (for elevation loss) in parallel
+      // Fetch detailed activity (laps, splits, HR) + HR zones + altitude stream
+      // (for elevation loss). On failure the session still imports from the
+      // summary; a later backfill fills in laps once Strava answers again.
       let detail = null, zones = null, elevationLoss = null;
       try {
-        const [detailRes, zonesRes, streamsRes] = await Promise.all([
-          fetch(`https://www.strava.com/api/v3/activities/${act.id}`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
-          fetch(`https://www.strava.com/api/v3/activities/${act.id}/zones`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
-          fetch(`https://www.strava.com/api/v3/activities/${act.id}/streams?keys=altitude&key_by_type=true`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
-        ]);
-        detail = detailRes;
-        zones = zonesRes;
-        elevationLoss = computeElevationLoss(streamsRes?.altitude?.data);
+        ({ detail, zones, elevationLoss } = await fetchActivityDetail(act.id, accessToken));
       } catch (err) {
         console.error(`Strava sync: detail/zones/streams fetch failed for activity ${act.id}:`, err.message);
       }
@@ -461,22 +532,23 @@ router.post('/backfill-notes', async (_req, res) => {
     // sync. Sessions that started as a manual/draft entry and were later
     // enriched via the sync merge path also have stravaActivityId set.
     const snap = await collections.sessions().get();
-    const toUpdate = snap.docs.filter(d => d.data().stravaActivityId);
+    // Sessions whose Strava block predates the current format (no Distance
+    // line) go first, so each run makes progress on the ones that need it
+    // even when the rate limit cuts it short.
+    const isStale = d => !/^Distance: /m.test(d.data().notes || '');
+    const toUpdate = snap.docs.filter(d => d.data().stravaActivityId)
+      .sort((a, b) => Number(isStale(b)) - Number(isStale(a)));
 
     let updated = 0;
+    let rateLimited = false;
     const rescoreIds = [];
     for (const doc of toUpdate) {
       const { stravaActivityId } = doc.data();
       try {
-        const [detail, zones, streams] = await Promise.all([
-          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()),
-          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/zones`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
-          fetch(`https://www.strava.com/api/v3/activities/${stravaActivityId}/streams?keys=altitude&key_by_type=true`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }).then(r => r.json()).catch(() => null),
-        ]);
-        const elevationLoss = computeElevationLoss(streams?.altitude?.data);
+        const { detail, zones, elevationLoss } = await fetchActivityDetail(stravaActivityId, accessToken);
+        // No activity came back — never replace existing notes with an
+        // empty rebuild.
+        if (!detail) continue;
         const freshStravaNotes = buildNotes({ description: detail.description }, detail, zones, elevationLoss);
         // Preserve any athlete-written prefix (manual/draft notes) ahead of the marker —
         // only the Strava-derived portion gets refreshed.
@@ -488,7 +560,7 @@ router.post('/backfill-notes', async (_req, res) => {
         const rpe = detail?.perceived_exertion
           ? Math.round(Math.max(1, Math.min(10, detail.perceived_exertion)))
           : undefined;
-        if (notes.trim()) {
+        if (notes.trim() && notes !== existingNotes) {
           await collections.sessions().doc(doc.id).update({
             notes,
             ...(rpe != null && { rpe }),
@@ -498,11 +570,12 @@ router.post('/backfill-notes', async (_req, res) => {
           updated++;
         }
       } catch (err) {
+        if (err instanceof StravaRateLimitError) { rateLimited = true; break; }
         console.error(`Strava backfill-notes: failed for activity ${stravaActivityId}:`, err.message);
       }
     }
 
-    res.json({ updated, total: toUpdate.length });
+    res.json({ updated, total: toUpdate.length, rateLimited });
     extractAndScoreSessions(rescoreIds, 'Strava backfill auto-score');
   } catch (err) {
     console.error(err);

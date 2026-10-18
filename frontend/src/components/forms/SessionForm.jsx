@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { sessionsApi, coachingApi } from '@/lib/api';
+import { sessionsApi, coachingApi, reprocessApi } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,9 @@ export default function SessionForm({ session, onClose, onSaved }) {
         notes: form.notes,
         type: session?.type || DEFAULT_TYPE,
         status: 'completed',
+        // With notes, this form extracts and scores itself after the review
+        // step — a background run would race it and overwrite corrections.
+        autoScore: !form.notes.trim(),
       };
       const isNew = !session;
       const saved = isNew
@@ -64,7 +67,7 @@ export default function SessionForm({ session, onClose, onSaved }) {
       setStage('extracting');
       setSaving(false);
       try {
-        const { summaryText } = await sessionsApi.extract(saved.id);
+        const { summaryText } = await sessionsApi.extractV2(saved.id);
         setReviewText(summaryText || '');
       } catch {
         setReviewText('');
@@ -83,7 +86,11 @@ export default function SessionForm({ session, onClose, onSaved }) {
   async function handleConfirmReview() {
     setStage('finalizing');
     try {
-      await sessionsApi.confirmExtraction(savedSession.id, reviewText);
+      // Same v2 pipeline as Log Session — the one Home and Objectives score
+      // from. The old v1 extractor capped the AI reply at 1,000 tokens, so a
+      // full HYROX sim came back truncated and read as "nothing found".
+      await sessionsApi.confirmExtractionV2(savedSession.id, reviewText);
+      await reprocessApi.rescoreSession(savedSession.id);
       await finalize(savedSession, !session);
     } catch (err) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -138,19 +145,19 @@ export default function SessionForm({ session, onClose, onSaved }) {
           <DialogHeader>
             <DialogTitle>Review What Was Extracted</DialogTitle>
             <DialogDescription>
-              This is your log rewritten as one line per exercise, with the total already worked out — e.g. "Thruster: 13 × 15 reps @ 11kg = 195 reps total". Fix any line that's wrong (a missed round count, a mislabeled movement) before station scores are computed from it. A line tagged <span className="italic">[new — pending review]</span> is an exercise not yet in your Exercise Library — it won't count toward a score until you approve it there.
+              This is your log rewritten as one line per exercise, with the total already worked out — grouped by section, e.g. "Ski: 4 × 125 m @ 0:24 = 500 m". Fix any line that's wrong (a missed round count, a mislabeled movement) before station scores are computed from it. A line tagged <span className="italic">[new — pending review]</span> is an exercise not yet in your Exercise Library — it won't count toward a score until you approve it there.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {reviewText.trim() === '' && (
-              <p className="text-sm text-muted-foreground">Nothing structured was found in your notes. Type exercise lines below if any should count toward a station, e.g. "Wall Balls: 100 reps @ 6kg".</p>
+              <p className="text-sm text-muted-foreground">Nothing structured was found in your notes. Type exercise lines below if any should count toward a station, e.g. "Wall Balls: 100 reps @ 6 kg".</p>
             )}
             <Textarea
               value={reviewText}
               onChange={e => setReviewText(e.target.value)}
               rows={10}
               className="font-mono text-sm"
-              placeholder={'Thruster: 13 × 15 reps @ 11kg = 195 reps total\nWall Balls: 100 reps @ 6kg'}
+              placeholder={'Main\nRun: 8 × 500 m @ 2:05 = 4,000 m\nWall Balls: 100 reps @ 6 kg'}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
