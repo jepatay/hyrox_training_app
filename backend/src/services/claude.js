@@ -52,6 +52,10 @@ const HYROX_WEIGHTS = {
   pro_women:  { sledPush: '152kg', sledPull: '103kg', farmersCarry: '2×24kg', walkingLunges: '20kg',  wallBall: '6kg / 9ft'  },
 };
 
+// Station knowledge is injected for every HYROX station, so the model must be told
+// that only the athlete's notes say what was actually performed.
+const SESSION_GROUNDING_RULE = `GROUND TRUTH — WHAT WAS ACTUALLY DONE: The athlete's session notes are the ONLY source of truth for which exercises were performed. The knowledge base and HYROX station references are background reading, NOT a description of this session. Never mention, praise, critique or ask about an exercise, station or piece of equipment (e.g. sled pull, farmers carry, wall balls, lunges) unless it explicitly appears in the session notes. If the notes are empty or vague, ask what was done rather than assuming.`;
+
 function ageFromBirthday(birthday) {
   if (!birthday) return null;
   const d = new Date(birthday);
@@ -77,7 +81,7 @@ export async function generateCoachingFeedback({ session, recentSessions, object
     .join('\n') || 'No objectives set';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    ? `\nAthlete's personal knowledge base (background reference only — their own coaching notes; apply them only to exercises that appear in the session notes):\n---\n${knowledge}\n---`
     : '';
 
   const today = new Date().toISOString().slice(0, 10);
@@ -114,11 +118,16 @@ ${knowledgeBlock}
 
 Also draw on current sports science and best practices for HYROX and endurance training to enrich your feedback.
 
+${SESSION_GROUNDING_RULE}
+
+Session notes again, for reference (this is exactly what was done):
+${session.notes || 'none'}
+
 Write 3-4 sentences of sharp, specific, personal coaching feedback. Reference their actual data. Be direct and motivating — like a coach who knows them well.
 
 DO NOT invent precision the data doesn't support. If the notes only give a TOTAL time for a round covering several exercises, that tells you the round as a whole was faster or slower — it does NOT tell you which specific exercise within it changed pace, felt different, or caused the difference. Only attribute a pacing observation to one particular movement if the notes actually break out that movement's own time/reps/pace separately. Otherwise, comment at the level the data actually supports (e.g. "round 3 was your slowest" — not "the burpees in round 3 were slower").
 
-Then, if the session notes are missing context that would change your feedback (e.g. how a specific movement felt, the load/weight used, fatigue level, technique cues), ask 1-2 direct, specific follow-up questions to fill that gap. Only ask if genuinely useful — skip if the notes are already detailed enough. Do not ask generic questions like "how did it go".
+Then, if the session notes are missing context that would change your feedback (e.g. how a specific movement felt, the load/weight used, fatigue level, technique cues), ask 1-2 direct, specific follow-up questions to fill that gap. Every question must be about an exercise or detail that actually appears in the session notes. Only ask if genuinely useful — skip if the notes are already detailed enough. Do not ask generic questions like "how did it go".
 
 Return plain text: the feedback first, then any follow-up questions on their own lines.`;
 
@@ -143,7 +152,7 @@ export async function generateFinalCoachingNote({ session, recentSessions, objec
     .join('\n') || 'No objectives set';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    ? `\nAthlete's personal knowledge base (background reference only — their own coaching notes; apply them only to exercises that appear in the session notes):\n---\n${knowledge}\n---`
     : '';
 
   const sessionDate = session.date?.slice(0, 10) || 'unknown';
@@ -169,6 +178,8 @@ Your initial feedback to the athlete:
 
 Athlete's reply:
 "${userReply}"
+
+${SESSION_GROUNDING_RULE} The athlete's reply also counts as ground truth; if it corrects something in your initial feedback, accept the correction and drop the wrong content.
 
 Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.`;
 
