@@ -77,7 +77,7 @@ export async function generateCoachingFeedback({ session, recentSessions, object
     .join('\n') || 'No objectives set';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    ? `\nAthlete's personal knowledge base (general reference notes on technique, race strategy and every HYROX station — use it ONLY to inform advice about exercises that appear in this session's notes. It is NOT a record of what the athlete did; never treat a station or tactic mentioned here as something performed or practised in this session):\n---\n${knowledge}\n---`
     : '';
 
   const today = new Date().toISOString().slice(0, 10);
@@ -120,6 +120,8 @@ DO NOT invent precision the data doesn't support. If the notes only give a TOTAL
 
 Then, if the session notes are missing context that would change your feedback (e.g. how a specific movement felt, the load/weight used, fatigue level, technique cues), ask 1-2 direct, specific follow-up questions to fill that gap. Only ask if genuinely useful — skip if the notes are already detailed enough. Do not ask generic questions like "how did it go".
 
+STRICT GROUNDING — what was actually done: The ONLY source of truth for which exercises were performed is the session Notes above (plus Type/Duration/RPE). Only name or praise an exercise, station, weight, pace or drill if it explicitly appears in the Notes. Do NOT mention any HYROX station that is absent from the Notes as if it was done (e.g. if the Notes contain no burpees, do not talk about their burpee broad jumps). Do NOT claim things were "practiced", "worked on" or "done before" unless the Notes or recent training show it. You may suggest an absent station as a recommendation for future training, clearly framed as such.
+
 Return plain text: the feedback first, then any follow-up questions on their own lines.`;
 
   return chat(prompt, 450);
@@ -143,7 +145,7 @@ export async function generateFinalCoachingNote({ session, recentSessions, objec
     .join('\n') || 'No objectives set';
 
   const knowledgeBlock = knowledge?.trim()
-    ? `\nAthlete's personal knowledge base (their own coaching notes — factor these into your feedback):\n---\n${knowledge}\n---`
+    ? `\nAthlete's personal knowledge base (general reference notes on technique, race strategy and every HYROX station — use it ONLY to inform advice about exercises that appear in this session's notes. It is NOT a record of what the athlete did; never treat a station or tactic mentioned here as something performed or practised in this session):\n---\n${knowledge}\n---`
     : '';
 
   const sessionDate = session.date?.slice(0, 10) || 'unknown';
@@ -170,7 +172,9 @@ Your initial feedback to the athlete:
 Athlete's reply:
 "${userReply}"
 
-Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.`;
+Write a single consolidated "Final Coaching Note" — 3-5 sentences — that updates your assessment using the new context from their reply. Be direct and specific, but don't invent precision the data doesn't support — e.g. if only a round's total time is known, don't attribute a pacing change to one specific exercise within it unless that movement's own time/reps/pace was actually stated. Do not ask further questions. This is the closing word on this session.
+
+STRICT GROUNDING — what was actually done: The ONLY source of truth for which exercises were performed is the session Notes above (plus Type/Duration/RPE). Only name or praise an exercise, station, weight, pace or drill if it explicitly appears in the Notes. Do NOT mention any HYROX station that is absent from the Notes as if it was done (e.g. if the Notes contain no burpees, do not talk about their burpee broad jumps). Do NOT claim things were "practiced", "worked on" or "done before" unless the Notes or recent training show it. You may suggest an absent station as a recommendation for future training, clearly framed as such. If your initial feedback mentioned an exercise that is not in the Notes, correct it rather than repeating it.`;
 
   return chat(prompt, 450);
 }
