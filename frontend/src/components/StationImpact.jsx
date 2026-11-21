@@ -30,7 +30,7 @@ export default function StationImpact({ scores, equivalence, sessionId, onUpdate
     if (!sessionId || refreshing) return;
     setRefreshing(true);
     try {
-      const { stationScores, stationEquivalence } = await coachingApi.generateStationScores(sessionId);
+      const { stationScores, stationEquivalence } = await coachingApi.generateStationScores(sessionId, { reextract: true });
       onUpdate?.(stationScores, stationEquivalence);
     } catch {
       // silently ignore
@@ -50,7 +50,7 @@ export default function StationImpact({ scores, equivalence, sessionId, onUpdate
             onClick={handleRefresh}
             disabled={refreshing}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            title="Recalculate station scores"
+            title="Re-read the notes and recalculate station scores"
           >
             <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Recalculating…' : 'Recalculate'}

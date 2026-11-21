@@ -4,7 +4,7 @@ import { rebuildWeekDigest } from '../services/trainingLoad.js';
 import { extractExercisesFromNotes, generateStationScores, renderExtractionSummary, parseExtractionSummary, renderExtractionSummaryV2, parseExtractionSummaryV2 } from '../services/claude.js';
 import { resolveExercisesAgainstLibrary, listLibrary } from '../services/exerciseLibrary.js';
 import { recomputeDailyTotal } from '../services/dailyTotals.js';
-import { extractV2ForSession, extractAndScoreSession } from '../services/v2Pipeline.js';
+import { extractV2ForSession, extractAndScoreSession, v1ExercisesFromV2 } from '../services/v2Pipeline.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -147,16 +147,12 @@ router.post('/:id/extract', async (req, res) => {
     } catch {
       return res.status(502).json({ error: "Couldn't read your session right now — please try again." });
     }
-    const exercises = extractionV2.lines.map(l => ({
-      name: l.exercise, libraryKey: l.libraryKey,
-      sets: l.intervals > 1 ? l.intervals : null,
-      reps: l.reps ?? null, weightKg: l.weightKg ?? null,
-      distanceM: l.distanceM ?? null, calories: l.calories ?? null, notes: l.notes ?? null,
-    }));
+    const exercises = v1ExercisesFromV2(extractionV2);
     const library = await listLibrary();
     const extracted = { exercises };
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
+      extractionManual: false,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted, library) });
@@ -175,11 +171,17 @@ router.post('/:id/extract', async (req, res) => {
 router.post('/:id/confirm-extraction', async (req, res) => {
   try {
     const { text } = req.body;
+    const before = docToObj(await collections.sessions().doc(req.params.id).get());
     const raw = parseExtractionSummary(text);
     const { exercises, library } = await resolveExercisesAgainstLibrary(raw.exercises);
     const extracted = { exercises };
+    // Only a review the athlete actually changed counts as hand-edited —
+    // confirming the summary as-is shouldn't block a later Recalculate
+    // from re-reading the notes.
+    const edited = (text || '').trim() !== renderExtractionSummary(before?.extractedExercises, library).trim();
     await collections.sessions().doc(req.params.id).update({
       extractedExercises: extracted,
+      ...(edited ? { extractionManual: true } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     res.json({ extractedExercises: extracted, summaryText: renderExtractionSummary(extracted, library) });
@@ -223,6 +225,7 @@ router.post('/:id/extract-v2', async (req, res) => {
 router.post('/:id/confirm-extraction-v2', async (req, res) => {
   try {
     const { text } = req.body;
+    const before = docToObj(await collections.sessions().doc(req.params.id).get());
     const raw = parseExtractionSummaryV2(text);
     const lines = raw.lines.filter(l => l.exercise);
     const { exercises: resolvedLines } = await resolveExercisesAgainstLibrary(
@@ -232,8 +235,11 @@ router.post('/:id/confirm-extraction-v2', async (req, res) => {
     const library = await listLibrary();
 
     const extractionV2 = { promptVersion: 1, lines: finalLines, extractedAt: new Date().toISOString() };
+    const edited = !before?.extractionV2
+      || (text || '').trim() !== renderExtractionSummaryV2(before.extractionV2, library).trim();
     await collections.sessions().doc(req.params.id).update({
       extractionV2,
+      ...(edited ? { extractionManual: true } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     res.json({ extractionV2, summaryText: renderExtractionSummaryV2(extractionV2, library) });
@@ -314,7 +320,8 @@ router.put('/:id', async (req, res) => {
     updates.sessionLoad = rpeNum && durNum ? Math.round(rpeNum * durNum) : null;
     // If notes changed, clear the now-stale extraction so it's recomputed in the background
     const notesChanged = 'notes' in req.body && req.body.notes !== before?.notes;
-    if (notesChanged) updates.extractedExercises = null;
+    // New notes supersede any hand-edited review of the old ones.
+    if (notesChanged) { updates.extractedExercises = null; updates.extractionManual = false; }
     await collections.sessions().doc(req.params.id).update(updates);
     const updated = docToObj(await collections.sessions().doc(req.params.id).get());
     res.json(updated);

@@ -97,6 +97,36 @@ export async function extractAndScoreSession(sessionId) {
   return scoreOneSession({ ...session, extractionV2 }, library, references, objective);
 }
 
+// v2 lines -> the v1 `extractedExercises` shape that station-impact scoring
+// (computeStationEquivalence) still reads.
+export function v1ExercisesFromV2(extractionV2) {
+  return (extractionV2?.lines || []).map(l => ({
+    name: l.exercise, libraryKey: l.libraryKey,
+    sets: l.intervals > 1 ? l.intervals : null,
+    reps: l.reps ?? null, weightKg: l.weightKg ?? null,
+    distanceM: l.distanceM ?? null, calories: l.calories ?? null, notes: l.notes ?? null,
+  }));
+}
+
+// Re-reads a session's notes with the current extraction rules and rewrites
+// both extractionV2 and the v1 extractedExercises (plus the v2 score), so a
+// fix to how notes are read reaches old sessions on Recalculate. Returns the
+// refreshed session, or the original untouched when there's nothing to read
+// or the athlete hand-edited the review (extractionManual) — re-reading the
+// notes would silently throw those edits away.
+export async function reextractSession(session) {
+  if (!session || session.status === 'planned' || session.extractionManual) return session;
+  if (!session.notes?.trim() && !session.runningDistance) return session;
+  const library = await listLibrary();
+  const extractionV2 = await extractV2ForSession(session, library);
+  const extractedExercises = { exercises: v1ExercisesFromV2(extractionV2) };
+  await collections.sessions().doc(session.id).update({ extractedExercises });
+  const refreshed = { ...session, extractionV2, extractedExercises };
+  const [references, objective] = await Promise.all([getStationReferences(), getActiveObjective()]);
+  await scoreOneSession(refreshed, library, references, objective);
+  return refreshed;
+}
+
 // Background helper: runs the pipeline for several sessions one after
 // another (each is an AI call), logging rather than throwing per session.
 export async function extractAndScoreSessions(ids, label = 'auto-score') {

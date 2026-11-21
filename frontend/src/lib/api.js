@@ -73,7 +73,7 @@ export const recordsApi = {
 export const coachingApi = {
   generateFeedback: (sessionId) => api.post('/api/coaching/feedback', { sessionId }),
   reply: (sessionId, reply) => api.post('/api/coaching/feedback/reply', { sessionId, reply }),
-  generateStationScores: (sessionId) => api.post('/api/coaching/station-scores', { sessionId }),
+  generateStationScores: (sessionId, opts = {}) => api.post('/api/coaching/station-scores', { sessionId, ...opts }),
 };
 
 export const suggestionsApi = {
