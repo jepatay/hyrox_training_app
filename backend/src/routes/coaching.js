@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { collections, docToObj } from '../services/firebase.js';
 import { generateCoachingFeedback, generateFinalCoachingNote, generateStationScores } from '../services/claude.js';
 import { listLibrary } from '../services/exerciseLibrary.js';
+import { reextractSession } from '../services/v2Pipeline.js';
 import admin from 'firebase-admin';
 
 const router = Router();
@@ -149,12 +150,23 @@ router.post('/feedback/reply', async (req, res) => {
 // POST generate HYROX station impact scores for a session
 router.post('/station-scores', async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, reextract = false } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
     const sessionDoc = await collections.sessions().doc(sessionId).get();
-    const session = docToObj(sessionDoc);
+    let session = docToObj(sessionDoc);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // The Recalculate button re-reads the notes first, so a fix to extraction
+    // rules applies to old sessions too (skipped for hand-edited reviews).
+    // A failed re-read falls back to scoring the stored extraction.
+    if (reextract) {
+      try {
+        session = await reextractSession(session);
+      } catch (err) {
+        console.error('Re-extraction failed, scoring stored extraction:', err);
+      }
+    }
 
     const [knowledgeDoc, profileDoc, library] = await Promise.all([
       collections.knowledge().doc('exercise_transferability').get(),
