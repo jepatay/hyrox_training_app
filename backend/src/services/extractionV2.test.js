@@ -339,3 +339,22 @@ test('fallback parser reads comma decimals, "N times", and strips pace/load desc
   assert.equal(by('Bike Erg').distanceM, 750);
   assert.ok(lines.some(l => l.exercise === 'Echo Bike' && l.calories === 125 && l.part === 'finisher'));
 });
+
+// weightKg is the TOTAL load moved — a two-implement carry/lunge logged per
+// hand must be multiplied, or the station score gets half the credit.
+test('freeform parser: paired implements are totaled, single implements are not', async () => {
+  const { parseFreeformWorkoutNotes } = await import('./claude.js');
+  const one = t => parseFreeformWorkoutNotes(t)[0];
+  const carry = one('24 lines of 13m farmers carry dual Kettlebell 32kg');
+  assert.equal(carry.exercise, 'Farmers Carry');
+  assert.equal(carry.intervals, 24);
+  assert.equal(carry.distanceM, 13);
+  assert.equal(carry.weightKg, 64);
+  assert.equal(one('100m farmers carry with dual KB 24kg').weightKg, 48);
+  assert.equal(one('50m walking lunges with 2×22kg DB').weightKg, 44);
+  assert.equal(one('50m farmers carry 24kg each hand').weightKg, 48);
+  assert.equal(one('50m walking lunges with two DBs 22kg').weightKg, 44);
+  assert.equal(one('50m walking lunges with 22kg DB').weightKg, 22);
+  assert.equal(one('2x 20 wall balls 6kg').weightKg, 6);
+  assert.equal(one('20 wall balls 6kg two rounds').weightKg, 6);
+});

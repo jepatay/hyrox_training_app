@@ -231,3 +231,16 @@ test('a bike erg logged with a time gets no run-pace factor, and a cal reading c
   const cal = scoreSession([{ exerciseKey: 'bikeErg', qty: null, calories: 25 }], lib, REFERENCES);
   assert.equal(cal.lines[0].qty, 750);
 });
+
+test('v1 station equivalence: 24×13m farmers carry @ 2×32kg (64kg total) -> ~208% of race demand, tier 5', async () => {
+  const { computeStationEquivalence, tierFromRatio } = await import('./claude.js');
+  const session = { extractedExercises: { exercises: [
+    { name: 'Farmers Carry', libraryKey: 'farmersCarry', sets: 24, distanceM: 13, weightKg: 64 },
+  ] } };
+  const library = [{ key: 'farmersCarry', status: 'approved', unit: 'm', credits: { farmers_carry: 1 } }];
+  const eq = computeStationEquivalence(session, undefined, library);
+  assert.ok(Math.abs(eq.farmers_carry.ratio - (64 * 312) / (48 * 200)) < 1e-9);
+  assert.equal(tierFromRatio(eq.farmers_carry.ratio), 5);
+  // The bug this guards against: the per-hand 32kg alone lands at ~104% -> 4.
+  assert.equal(tierFromRatio((32 * 312) / (48 * 200)), 4);
+});

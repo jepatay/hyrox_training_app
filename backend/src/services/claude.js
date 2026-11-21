@@ -386,7 +386,7 @@ Return:
       "name": "<short Title Case name for the movement, e.g. 'Wall Balls', 'Kettlebell Swing', 'Assault Bike', 'Thruster', 'Pull Up'. Use the same consistent name for every mention of the same movement in this response. Do NOT force it into a fixed category — if it's a real, recognizable exercise, name it specifically rather than calling it 'Other'.>",
       "sets": <number or null — ONLY a round/set MULTIPLIER, i.e. how many times the reps value below was repeated (e.g. "3 sets of 8 thrusters" -> sets: 3, reps: 8). If the notes describe just one instance with no round/set language ("8 thrusters"), leave sets null and put the 8 in reps — do NOT put a bare rep count here.>,
       "reps": <number or null — the rep count itself (per set if sets is also given, otherwise the total, e.g. "8 thrusters" -> reps: 8, sets: null)>,
-      "weightKg": <number or null — ALWAYS convert to kilograms, even when the notes state lbs/pounds (1 lb = 0.4536 kg) — never copy a lbs number in as if it were kg>,
+      "weightKg": <number or null — ALWAYS convert to kilograms, even when the notes state lbs/pounds (1 lb = 0.4536 kg) — never copy a lbs number in as if it were kg — the TOTAL load moved, across every implement: when the notes say dual / double / a pair of / two / 2× / 2x / each hand / per hand / both hands, multiply the per-implement weight by the count (e.g. "farmers carry dual Kettlebell 32kg" -> 64; "lunges with 2×22kg DB" -> 44; "22kg DB" alone -> 22)>,
       "distanceM": <number or null>,
       "calories": <number or null — ONLY for a cardio machine reading given in calories, e.g. an assault bike/echo bike/rower display showing "200 cal". Do not fill both calories and distanceM for the same entry.>,
       "notes": "<any other relevant detail or null>"
@@ -523,7 +523,7 @@ Return:
       "reps": <number or null — the PER-INTERVAL rep count (not multiplied by intervals)>,
       "distanceM": <number or null — the PER-INTERVAL distance in meters (not multiplied by intervals)>,
       "calories": <number or null — the PER-INTERVAL calories for a cardio machine reading (echo/assault bike, bike erg, rower), not multiplied by intervals>,
-      "weightKg": <number or null — ALWAYS convert to kilograms (1 lb = 0.4536 kg)>,
+      "weightKg": <number or null — ALWAYS convert to kilograms (1 lb = 0.4536 kg) — the TOTAL load moved, across every implement: when the notes say dual / double / a pair of / two / 2× / 2x / each hand / per hand / both hands, multiply the per-implement weight by the count (e.g. "farmers carry dual Kettlebell 32kg" -> 64; "lunges with 2×22kg DB" -> 44; "22kg DB" alone -> 22)>,
       "timeSec": <number or null — the time taken for ONE interval, in seconds, ONLY if the notes state a time or pace for it (e.g. "200m in 32 seconds" -> timeSec: 32; "5km in 25:00" -> timeSec: 1500). Never compute or estimate a time/pace yourself — leave null if the notes don't state one.>,
       "notes": "<any other relevant detail or null>"
     }
@@ -568,6 +568,18 @@ const FREEFORM_HEADER_PART = [
 ];
 const FREEFORM_WEIGHT_RE = /@?\s*(\d+(?:\.\d+)?)\s*(kgs?|kb|k|lbs?)\b/i;
 
+// Paired-implement wording ("dual KB 32kg", "2x24kg", "a pair of 22kg DBs",
+// "24kg each hand"). weightKg is always the TOTAL load moved — that's what
+// the race references (farmers carry 48kg = 2×24kg) are expressed in — so a
+// per-hand weight has to be multiplied by the implement count, or a two-bell
+// carry gets half the credit it earned.
+const PAIRED_WORD_RE = /\b(dual|double|pair\s+of|a\s+pair|two\s+(?:kbs?|dbs?|kettlebells?|dumbbells?)|each\s+hand|per\s+hand|both\s+hands)\b/i;
+const PAIRED_PREFIX_RE = /\b2\s*[x×]\s*(?=\d+(?:\.\d+)?\s*(?:kgs?|kb|k|lbs?)\b)/i;
+
+export function implementCountFor(text) {
+  return PAIRED_WORD_RE.test(text || '') || PAIRED_PREFIX_RE.test(text || '') ? 2 : 1;
+}
+
 function freeformTitle(name) {
   return name.split(/\s+/).filter(Boolean)
     .map(w => (/^(kb|db|bb)$/i.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
@@ -589,7 +601,9 @@ export function parseFreeformWorkoutNotes(notes) {
     }
 
     // "12,5m" (comma decimal) and "4 times 125m" read like "12.5m" / "4 x 125m".
-    text = text.replace(/(\d),(\d)/g, '$1.$2').replace(/^(\d+)\s*times\s+/i, '$1x ');
+    // "24 lines of 13m" / "6 laps of 50m" read like "24 x 13m".
+    text = text.replace(/(\d),(\d)/g, '$1.$2').replace(/^(\d+)\s*times\s+/i, '$1x ')
+      .replace(/^(\d+)\s*(?:lines|lanes|lengths|laps|rounds|sets)\s+of\s+(?=\d)/i, '$1x ');
     const m = text.match(/^(?:(\d+)\s*[x×]\s*)?(\d+(?:\.\d+)?)\s*(cal(?:ories)?|kcal|km|m|reps?|min(?:s|utes)?|sec(?:s|onds)?)?\b\s*(.*)$/i);
     if (!m) continue;
     const intervals = m[1] ? parseInt(m[1], 10) : 1;
@@ -601,8 +615,10 @@ export function parseFreeformWorkoutNotes(notes) {
     const w = rest.match(FREEFORM_WEIGHT_RE);
     if (w) {
       weightKg = /^lb/i.test(w[2]) ? Math.round(parseFloat(w[1]) * 0.4536 * 10) / 10 : parseFloat(w[1]);
-      rest = rest.replace(w[0], ' ');
+      weightKg *= implementCountFor(rest);
+      rest = rest.replace(PAIRED_PREFIX_RE, ' ').replace(w[0], ' ');
     }
+    rest = rest.replace(new RegExp(PAIRED_WORD_RE.source, 'gi'), ' ');
     // Pace/load/time descriptions after the name ("run at around 4'10 per
     // km", "lunges with 22kg DB", "echo bike in 12 minutes") aren't part of it.
     rest = rest.replace(/\s+(at|with|in)\s.*$/i, '');
@@ -908,7 +924,7 @@ Decide how much this exercise should count toward each station, as a weight from
 Also decide:
 - "unit": "reps", "m" (distance-based), "km" (long-distance running), or "cal" (a cardio machine reading given in calories)
 - if unit is "cal", "metersPerCal": a reasonable meters-per-calorie conversion for that specific machine (e.g. ~10-15 for an assault/air bike, ~15-20 for a rower)
-- "referenceLoadKg": only if this exercise is normally done against an external load (barbell, dumbbell, kettlebell, sandbag, sled, etc.) AND it's credited toward a weighted station (sled_push, sled_pull, farmers_carry, sandbag_lunges, wall_balls) — a reasonable reference load in kg for an average athlete at that movement, used to scale the credit up or down from actual logged load. null otherwise (bodyweight moves, cardio, no weighted-station credit).
+- "referenceLoadKg": only if this exercise is normally done against an external load (barbell, dumbbell, kettlebell, sandbag, sled, etc.) AND it's credited toward a weighted station (sled_push, sled_pull, farmers_carry, sandbag_lunges, wall_balls) — a reasonable reference load in kg for an average athlete at that movement, as the TOTAL load across all implements (e.g. a two-kettlebell farmers carry at 2×24kg -> 48, not 24), used to scale the credit up or down from actual logged load. null otherwise (bodyweight moves, cardio, no weighted-station credit).
 
 Return JSON only:
 {
@@ -1273,7 +1289,7 @@ function rpeIntensityMultiplier(rpe) {
 // across several stations (e.g. an assault bike crediting running/ski/row).
 // Only 'approved' library entries count; a still-pending exercise (unrecognized,
 // awaiting the athlete's review) contributes nothing until approved.
-function computeStationEquivalence(session, benchmarkOverrides, library = []) {
+export function computeStationEquivalence(session, benchmarkOverrides, library = []) {
   const byStation = {};
   const bump = (key) => (byStation[key] ||= { workKg: 0, volume: 0, distanceM: 0, reps: 0 });
   const libraryByKey = new Map(library.map(e => [e.key, e]));
@@ -1387,7 +1403,7 @@ function computeStationEquivalence(session, benchmarkOverrides, library = []) {
 // in other qualitative signals (like rest between rounds) even when the
 // precomputed number said otherwise. For any station this function can
 // compute, that's a bug we can just remove by not asking the model at all.
-function tierFromRatio(ratio, thresholds) {
+export function tierFromRatio(ratio, thresholds) {
   const t5 = thresholds?.t5 ?? 1.5;
   const t4 = thresholds?.t4 ?? 0.75;
   const t3 = thresholds?.t3 ?? 0.4;
